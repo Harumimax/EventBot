@@ -187,7 +187,7 @@ Message rendering and callback data helpers live in `eventbot/services/rendering
 
 ## Cleanup
 
-The application should run a periodic cleanup task, for example once per day.
+The application runs a periodic cleanup task once per day. The task is started in `eventbot/bot.py` together with Telegram polling and delegates deletion to `eventbot/services/cleanup.py`.
 
 Cleanup removes:
 
