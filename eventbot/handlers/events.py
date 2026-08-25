@@ -5,6 +5,10 @@ from aiogram.enums import ChatType
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, Message
 
+from eventbot.services.participation import (
+    join_feedback_text,
+    should_update_event_message_after_join,
+)
 from eventbot.services.rendering import (
     build_event_keyboard,
     format_event_message,
@@ -87,6 +91,11 @@ async def join_event(
         user_id=callback.from_user.id,
         display_name=callback.from_user.full_name,
     )
+
+    if not should_update_event_message_after_join(was_added):
+        await callback.answer(join_feedback_text(was_added))
+        return
+
     participants = await event_repository.list_participants(event.id)
 
     await callback.message.edit_text(
@@ -94,4 +103,4 @@ async def join_event(
         reply_markup=build_event_keyboard(event.id),
     )
 
-    await callback.answer("Вы записаны!" if was_added else "Вы уже в списке.")
+    await callback.answer(join_feedback_text(was_added))
