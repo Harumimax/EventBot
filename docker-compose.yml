@@ -1,0 +1,13 @@
+services:
+  eventbot:
+    build:
+      context: .
+    container_name: eventbot
+    restart: unless-stopped
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /app/data/eventbot.sqlite
+    volumes:
+      - ./data:/app/data

@@ -1,0 +1,107 @@
+name: Test and deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: eventbot-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: python -m pip install -e .
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests
+
+      - name: Check syntax
+        run: python -m compileall eventbot tests
+
+      - name: Check UTF-8 text files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          bad = []
+          markers = (chr(0xFFFD), chr(0x00D0), chr(0x00D1))
+          suffixes = {".py", ".md", ".toml", ".yml", ".yaml", ".example", ".gitignore", ".gitattributes"}
+          skip = {".git", ".venv", "eventbot.egg-info", "__pycache__", "docs"}
+
+          files = [
+              path
+              for path in Path(".").rglob("*")
+              if path.is_file()
+              and not any(part in skip for part in path.parts)
+              and (path.suffix in suffixes or path.name in {".gitignore", ".gitattributes", ".dockerignore"})
+          ]
+
+          for path in files:
+              try:
+                  text = path.read_text(encoding="utf-8")
+              except UnicodeDecodeError:
+                  bad.append(f"{path}: not utf-8")
+                  continue
+
+              if any(marker in text for marker in markers):
+                  bad.append(f"{path}: possible mojibake")
+
+          if bad:
+              print("\n".join(bad))
+              raise SystemExit(1)
+
+          print("UTF-8 check OK")
+          PY
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          source: "Dockerfile,.dockerignore,docker-compose.yml,pyproject.toml,README.md,eventbot,tests"
+          target: "/srv/eventbot"
+          overwrite: true
+          rm: false
+
+      - name: Start Docker Compose
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            cd /srv/eventbot
+            mkdir -p data
+            test -f .env
+            grep -q '^APP_UID=' .env
+            grep -q '^APP_GID=' .env
+            docker compose up -d --build
+            docker compose ps
