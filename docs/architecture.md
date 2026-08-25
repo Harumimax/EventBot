@@ -172,16 +172,18 @@ The event message should contain:
 Example:
 
 ```text
-Event:
-Football on Saturday at 19:00
+Событие:
+Футбол в субботу в 19:00
 
-Participants: 3
-1. Max
-2. Anna
-3. Ivan
+Участники: 3
+1. Максим
+2. Анна
+3. Иван
 ```
 
 The MVP can treat repeated button presses as "already joined" and show a short callback notification. Toggle join/leave behavior can be added later if needed.
+
+Message rendering and callback data helpers live in `eventbot/services/rendering.py`. Telegram handlers should use those helpers instead of composing event messages inline.
 
 ## Cleanup
 

@@ -17,6 +17,14 @@ Run the bot:
 python -m eventbot
 ```
 
+## Telegram Commands
+
+```text
+/start - show a short introduction
+/help - show available commands
+/newevent description - create a group event
+```
+
 ## Tests
 
 ```powershell
