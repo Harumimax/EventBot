@@ -33,7 +33,7 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(event_count), 1)
         self.assertEqual(len(participant_count), 1)
 
-    async def test_create_event_sets_expiration_after_fourteen_days(self) -> None:
+    async def test_create_event_sets_expiration_after_ttl_days(self) -> None:
         now = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
 
         event = await self.repository.create_event(

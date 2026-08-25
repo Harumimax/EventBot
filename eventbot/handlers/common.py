@@ -7,6 +7,13 @@ from aiogram.types import Message
 
 router = Router(name="common")
 
+HELP_TEXT = (
+    "Команды:\n"
+    "/newevent описание - создать событие в группе\n"
+    "\n"
+    "События автоматически удаляются через 28 дней."
+)
+
 
 @router.message(CommandStart())
 async def start(message: Message) -> None:
@@ -18,7 +25,4 @@ async def start(message: Message) -> None:
 
 @router.message(Command("help"))
 async def help_command(message: Message) -> None:
-    await message.answer(
-        "Команды:\n"
-        "/newevent описание - создать событие в группе"
-    )
+    await message.answer(HELP_TEXT)

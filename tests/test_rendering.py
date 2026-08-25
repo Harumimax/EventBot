@@ -72,7 +72,7 @@ def _event(description: str) -> Event:
         created_by_user_id=42,
         description=description,
         created_at="2026-08-25T12:00:00+00:00",
-        expires_at="2026-09-08T12:00:00+00:00",
+        expires_at="2026-09-22T12:00:00+00:00",
         is_closed=False,
     )
 

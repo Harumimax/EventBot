@@ -15,7 +15,7 @@ The first version includes:
 - Letting group members join the event by pressing the button.
 - Updating the original event message after participation changes.
 - Persisting events and participants across bot restarts.
-- Automatically deleting events older than 14 days.
+- Automatically deleting events older than 28 days.
 - Deploying to an existing VPS through GitHub Actions and Docker.
 
 Out of scope for the MVP:
@@ -76,7 +76,7 @@ Reasoning:
 - The project is for personal and small-group use.
 - Expected load is low.
 - Data model is simple.
-- Events are short-lived and can be removed after 14 days.
+- Events are short-lived and can be removed after 28 days.
 - SQLite avoids the operational cost of PostgreSQL or another database server.
 - A persistent Docker volume is enough to survive container restarts and deploys.
 
@@ -125,7 +125,7 @@ This keeps the MVP simple because private events would require a separate intera
 5. A group member presses the button.
 6. The bot stores the participant in SQLite.
 7. The bot edits the original event message with the updated participant list.
-8. A cleanup task periodically deletes events older than 14 days.
+8. A cleanup task periodically deletes events older than 28 days.
 
 For the MVP, any group member may create an event. Advanced permissions can be added later.
 
@@ -141,7 +141,7 @@ Initial SQLite tables:
 - `created_by_user_id`: Telegram user id of the creator.
 - `description`: event text from `/newevent`.
 - `created_at`: creation timestamp.
-- `expires_at`: timestamp for cleanup, normally `created_at + 14 days`.
+- `expires_at`: timestamp for cleanup, normally `created_at + 28 days`.
 - `is_closed`: reserved for later manual closing.
 
 ### participants

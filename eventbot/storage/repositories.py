@@ -8,7 +8,7 @@ import aiosqlite
 from eventbot.storage.database import Database
 
 
-EVENT_TTL_DAYS = 14
+EVENT_TTL_DAYS = 28
 
 
 @dataclass(frozen=True)

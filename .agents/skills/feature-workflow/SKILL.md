@@ -52,7 +52,7 @@ Project architecture reminders:
 - The original bot message should be edited after participant changes.
 - Events and participants must survive bot restarts.
 - SQLite database must live in a persistent Docker volume or mounted VPS directory.
-- Events are short-lived and should be automatically deleted after 14 days.
+- Events are short-lived and should be automatically deleted after 28 days.
 - Telegram `user_id` is the stable participant identity.
 - Telegram display names are only presentation data and must not be used as identifiers.
 - Telegram bot token and other secrets must never be committed.
