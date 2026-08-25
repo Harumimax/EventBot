@@ -88,6 +88,10 @@ SQLite should be stored outside the container filesystem, for example:
 
 mounted from a VPS directory or Docker volume.
 
+Schema initialization currently lives in `eventbot/storage/database.py`. The app runs this initialization on startup before polling Telegram updates. For the MVP this is enough: the schema is created if missing, and `PRAGMA user_version = 1` marks the first database version. Future incompatible schema changes should add an explicit migration path instead of silently rewriting existing data.
+
+Database access should go through repository classes in `eventbot/storage/repositories.py`. Telegram handlers should not execute SQL directly.
+
 ## Telegram Behavior
 
 ### Group Chats
