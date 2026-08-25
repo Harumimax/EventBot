@@ -1,71 +1,46 @@
 # EventBot
 
-Telegram bot for collecting participants for group events.
+EventBot is a Telegram bot for quickly collecting participants for events in group chats.
 
-## Local Run
+Bot: [@SuperNewEventBot](https://t.me/SuperNewEventBot)
 
-Create a local `.env` file:
+## What It Does
 
-```text
-TELEGRAM_BOT_TOKEN=your_bot_token
-DATABASE_PATH=./data/eventbot.sqlite
-```
+EventBot helps a group agree who is joining an event without messy chat threads.
 
-Run the bot:
+You create an event directly in a Telegram group, and the bot publishes a message with a participant list and a join button. People tap the button, and the list updates in the same message.
 
-```powershell
-python -m eventbot
-```
+## How To Use
 
-## Telegram Commands
+1. Add [@SuperNewEventBot](https://t.me/SuperNewEventBot) to a Telegram group.
+2. In the group, send:
 
 ```text
-/start - show a short introduction
-/help - show available commands
-/newevent description - create a group event
+/newevent Board games on Saturday at 19:00
 ```
 
-## Tests
+3. EventBot will create an event message with a join button.
+4. Group members tap `Участвую` to join.
+5. The bot updates the participant list in the original message.
 
-```powershell
-python -m unittest discover -s tests
-```
-
-## Docker
-
-The container expects a server-side `.env` file and stores SQLite data in `./data`.
-
-```powershell
-docker compose up -d --build
-```
-
-## Deployment
-
-Pushes to `main` run tests in GitHub Actions and deploy to `/srv/eventbot` on the VPS over SSH.
-
-Required GitHub repository secrets:
+## Commands
 
 ```text
-VPS_HOST
-VPS_USER
-VPS_SSH_KEY
-VPS_PORT
+/newevent description
 ```
 
-`VPS_USER` is expected to be `deploy`. `VPS_PORT` can be set to `22` unless the server uses a custom SSH port.
-
-The VPS `.env` file in `/srv/eventbot/.env` should contain:
+Create a new event in the current group.
 
 ```text
-TELEGRAM_BOT_TOKEN=your_bot_token
-DATABASE_PATH=/app/data/eventbot.sqlite
-APP_UID=deploy_user_id
-APP_GID=deploy_group_id
+/help
 ```
 
-Get `APP_UID` and `APP_GID` on the VPS with:
+Show available commands and basic usage.
 
-```bash
-id -u deploy
-id -g deploy
-```
+## Data Lifetime
+
+Events are temporary. EventBot automatically deletes old events after 28 days.
+
+## Current Status
+
+EventBot is a small personal project for friendly group events. It is intentionally simple and focused on the core flow: create an event, join it, and keep the participant list visible in the chat.
