@@ -47,9 +47,9 @@ async def new_event(
         created_by_user_id=message.from_user.id,
         description=description,
     )
-    participants = await event_repository.list_participants(event.id)
+    responses = await event_repository.list_event_responses(event.id)
     sent_message = await message.answer(
-        format_event_message(event, participants),
+        format_event_message(event, responses),
         reply_markup=build_event_keyboard(event.id),
     )
     await event_repository.set_event_message_id(event.id, sent_message.message_id)
@@ -96,10 +96,10 @@ async def join_event(
         await callback.answer(join_feedback_text(was_added))
         return
 
-    participants = await event_repository.list_participants(event.id)
+    responses = await event_repository.list_event_responses(event.id)
 
     await callback.message.edit_text(
-        format_event_message(event, participants),
+        format_event_message(event, responses),
         reply_markup=build_event_keyboard(event.id),
     )
 
