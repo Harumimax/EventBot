@@ -241,6 +241,44 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, ResponseStatus.NOT_GOING)
         self.assertEqual(response.guests_count, 0)
 
+    async def test_list_expired_events_returns_only_expired_events(self) -> None:
+        now = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
+        expired_event = await self.repository.create_event(
+            chat_id=-100,
+            created_by_user_id=42,
+            description="Старое событие",
+            now=now - timedelta(days=EVENT_TTL_DAYS + 1),
+        )
+        await self.repository.create_event(
+            chat_id=-100,
+            created_by_user_id=42,
+            description="Новое событие",
+            now=now,
+        )
+
+        expired_events = await self.repository.list_expired_events(now=now)
+
+        self.assertEqual([event.id for event in expired_events], [expired_event.id])
+
+    async def test_delete_event_cascades_responses(self) -> None:
+        event = await self.repository.create_event(
+            chat_id=-100,
+            created_by_user_id=42,
+            description="Событие",
+        )
+        await self.repository.set_response_status(
+            event_id=event.id,
+            user_id=1001,
+            display_name="Анна",
+            status=ResponseStatus.GOING,
+        )
+
+        was_deleted = await self.repository.delete_event(event.id)
+
+        self.assertTrue(was_deleted)
+        self.assertIsNone(await self.repository.get_event(event.id))
+        self.assertEqual(await self.repository.list_event_responses(event.id), [])
+
     async def test_initialize_migrates_v1_participants_to_v2_responses(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "legacy.sqlite"

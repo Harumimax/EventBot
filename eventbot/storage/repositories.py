@@ -133,6 +133,39 @@ class EventRepository:
 
         return _event_from_row(row) if row else None
 
+    async def list_expired_events(self, now: datetime | None = None) -> list[Event]:
+        current_timestamp = _format_timestamp(now or datetime.now(UTC))
+
+        connection = await self.database.connect()
+        try:
+            cursor = await connection.execute(
+                """
+                SELECT *
+                FROM events
+                WHERE expires_at < ?
+                ORDER BY expires_at ASC, id ASC
+                """,
+                (current_timestamp,),
+            )
+            rows = await cursor.fetchall()
+        finally:
+            await connection.close()
+
+        return [_event_from_row(row) for row in rows]
+
+    async def delete_event(self, event_id: int) -> bool:
+        connection = await self.database.connect()
+        try:
+            cursor = await connection.execute(
+                "DELETE FROM events WHERE id = ?",
+                (event_id,),
+            )
+            await connection.commit()
+
+            return cursor.rowcount == 1
+        finally:
+            await connection.close()
+
     async def set_response_status(
         self,
         *,
@@ -367,19 +400,14 @@ class EventRepository:
         return [_participant_from_response_row(row) for row in rows]
 
     async def delete_expired_events(self, now: datetime | None = None) -> int:
-        current_timestamp = _format_timestamp(now or datetime.now(UTC))
+        expired_events = await self.list_expired_events(now=now)
 
-        connection = await self.database.connect()
-        try:
-            cursor = await connection.execute(
-                "DELETE FROM events WHERE expires_at < ?",
-                (current_timestamp,),
-            )
-            await connection.commit()
+        deleted_count = 0
+        for event in expired_events:
+            if await self.delete_event(event.id):
+                deleted_count += 1
 
-            return cursor.rowcount
-        finally:
-            await connection.close()
+        return deleted_count
 
 
 async def _fetch_one(

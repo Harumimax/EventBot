@@ -7,6 +7,7 @@ from eventbot.services.rendering import (
     build_event_message_stats,
     build_join_callback_data,
     format_event_message,
+    format_expired_event_message,
     parse_event_callback_data,
     parse_join_callback_data,
 )
@@ -101,6 +102,14 @@ class RenderingTests(unittest.TestCase):
         message = format_event_message(event, [])
 
         self.assertIn("🔒 Event closed", message)
+
+    def test_format_expired_event_message_appends_closed_text(self) -> None:
+        event = _event(description="Футбол в субботу")
+
+        message = format_expired_event_message(event, [])
+
+        self.assertNotIn("🔒 Event closed", message)
+        self.assertTrue(message.endswith("\n\nсобытие закрыто"))
 
     def test_format_event_message_with_grouped_responses_and_guests(self) -> None:
         event = _event(description="Потренить в понедельник в 20:00")

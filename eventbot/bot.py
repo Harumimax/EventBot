@@ -28,7 +28,7 @@ async def run_bot() -> None:
     event_repository = EventRepository(database)
     dispatcher["event_repository"] = event_repository
 
-    cleanup_task = asyncio.create_task(run_cleanup_loop(event_repository))
+    cleanup_task = asyncio.create_task(run_cleanup_loop(event_repository, bot=bot))
     try:
         await dispatcher.start_polling(bot)
     finally:

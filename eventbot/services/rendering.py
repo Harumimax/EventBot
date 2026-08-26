@@ -9,6 +9,7 @@ from eventbot.storage.repositories import Event, EventResponse, ResponseStatus
 
 
 CALLBACK_PREFIX = "event"
+EXPIRED_EVENT_SUFFIX = "событие закрыто"
 
 
 class EventAction(StrEnum):
@@ -174,6 +175,14 @@ def format_event_message(event: Event, responses: list[EventResponse]) -> str:
     )
 
     return "\n".join(lines)
+
+
+def format_expired_event_message(event: Event, responses: list[EventResponse]) -> str:
+    message = format_event_message(event, responses)
+    if message.endswith(EXPIRED_EVENT_SUFFIX):
+        return message
+
+    return f"{message}\n\n{EXPIRED_EVENT_SUFFIX}"
 
 
 def build_event_message_stats(responses: list[EventResponse]) -> EventMessageStats:
