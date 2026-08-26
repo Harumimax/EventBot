@@ -18,6 +18,7 @@ from eventbot.storage.repositories import EventRepository
 
 
 router = Router(name="events")
+MAX_EVENT_DESCRIPTION_LENGTH = 200
 
 
 @router.message(Command("newevent"))
@@ -42,6 +43,7 @@ async def new_event(
         await message.answer("Напиши описание: /newevent настольные игры в субботу")
         return
 
+    description = truncate_event_description(description)
     event = await event_repository.create_event(
         chat_id=message.chat.id,
         created_by_user_id=message.from_user.id,
@@ -92,7 +94,10 @@ async def handle_event_action(
         event=event,
         action=parsed_callback.action,
         user_id=callback.from_user.id,
-        display_name=callback.from_user.full_name,
+        display_name=build_response_display_name(
+            full_name=callback.from_user.full_name,
+            username=callback.from_user.username,
+        ),
     )
 
     if not result.should_update_message:
@@ -117,3 +122,23 @@ async def handle_event_action(
             raise
 
     await callback.answer(result.feedback_text)
+
+
+def truncate_event_description(description: str) -> str:
+    if len(description) <= MAX_EVENT_DESCRIPTION_LENGTH:
+        return description
+
+    return f"{description[:MAX_EVENT_DESCRIPTION_LENGTH]}..."
+
+
+def build_response_display_name(*, full_name: str, username: str | None) -> str:
+    normalized_full_name = full_name.strip()
+    normalized_username = (username or "").strip()
+
+    if normalized_full_name and normalized_username:
+        return f"{normalized_full_name} (@{normalized_username})"
+
+    if normalized_username:
+        return f"@{normalized_username}"
+
+    return normalized_full_name
