@@ -1,46 +1,80 @@
 # EventBot
 
-EventBot is a Telegram bot for quickly collecting participants for events in group chats.
+**EventBot** помогает быстро собрать людей на встречу прямо в Telegram-чате.
 
-Bot: [@SuperNewEventBot](https://t.me/SuperNewEventBot)
+👉 Бот: [@SuperNewEventBot](https://t.me/SuperNewEventBot)
 
-## What It Does
+## ✨ Зачем Он Нужен
 
-EventBot helps a group agree who is joining an event without messy chat threads.
+Когда в чате договариваются о футболе, настолках, тренировке, встрече или поездке, список участников быстро теряется среди сообщений.
 
-You create an event directly in a Telegram group, and the bot publishes a message with a participant list and a join button. People tap the button, and the list updates in the same message.
+EventBot делает проще: создаёт одно сообщение события, а участники отмечаются кнопками. Список обновляется на месте, без копипаста и ручного подсчёта.
 
-## How To Use
+## 🚀 Как Пользоваться
 
-1. Add [@SuperNewEventBot](https://t.me/SuperNewEventBot) to a Telegram group.
-2. In the group, send:
-
-```text
-/newevent Board games on Saturday at 19:00
-```
-
-3. EventBot will create an event message with a join button.
-4. Group members tap `Участвую` to join.
-5. The bot updates the participant list in the original message.
-
-## Commands
+1. Добавьте [@SuperNewEventBot](https://t.me/SuperNewEventBot) в групповой чат.
+2. Напишите команду:
 
 ```text
-/newevent description
+/newevent Настольные игры в субботу в 19:00
 ```
 
-Create a new event in the current group.
+3. Бот создаст карточку события.
+4. Участники нажимают кнопки и попадают в нужный список.
+
+## 🎛️ Кнопки События
+
+`✅ Going` — иду  
+`❌ Not going` — не иду  
+`💭 Thinking` — думаю  
+`➕ +1` — беру с собой ещё одного человека  
+`➖ -1` — убираю одного гостя  
+`🧹 - All` — убираю всех своих гостей  
+`🔒 Close event` — закрыть событие
+
+## 🧾 Как Выглядит Список
+
+```text
+👉 Футбол в понедельник в 20:00 👈
+
+Going😀:
+✅ Максим Иванов (@maxim)
+✅ Анна Петрова (@anna)
+➕1, from: Максим Иванов (@maxim)
+
+Not going😐:
+❌ Алексей (@alexey)
+
+Not sure🤔:
+💭 Дима
+
+Total going: 3
+✅: 2
+➕: 1
+❌: 1
+💭: 1
+```
+
+Имена участников отображаются как ссылки на Telegram-профиль, чтобы легче понять, кто именно записался.
+
+## 🧹 Срок Жизни Событий
+
+События живут **28 дней**. После этого бот закрывает событие, убирает кнопки и очищает старые данные.
+
+## 🛠️ Команды
+
+```text
+/newevent описание события
+```
+
+Создаёт новое событие в текущей группе.
 
 ```text
 /help
 ```
 
-Show available commands and basic usage.
+Показывает короткую справку по боту.
 
-## Data Lifetime
+## 💛 Статус Проекта
 
-Events are temporary. EventBot automatically deletes old events after 28 days.
-
-## Current Status
-
-EventBot is a small personal project for friendly group events. It is intentionally simple and focused on the core flow: create an event, join it, and keep the participant list visible in the chat.
+EventBot — небольшой личный проект для дружеских встреч и групповых активностей. Он сделан простым: создать событие, собрать участников, посчитать гостей и не потерять договорённость в переписке.
