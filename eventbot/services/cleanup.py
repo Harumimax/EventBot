@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Protocol
 
+from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardMarkup
 
@@ -27,6 +28,7 @@ class EventMessageEditor(Protocol):
         chat_id: int,
         message_id: int,
         reply_markup: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
     ) -> object:
         pass
 
@@ -85,6 +87,7 @@ async def _finalize_event_message(
             chat_id=chat_id,
             message_id=message_id,
             reply_markup=None,
+            parse_mode=ParseMode.HTML,
         )
     except TelegramBadRequest as error:
         logger.warning(

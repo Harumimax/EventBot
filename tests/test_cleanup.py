@@ -3,6 +3,8 @@ import unittest
 from dataclasses import replace
 from datetime import UTC, datetime
 
+from aiogram.enums import ParseMode
+
 from eventbot.services.cleanup import run_cleanup_loop, run_cleanup_once
 from eventbot.storage.repositories import Event, EventResponse, ResponseStatus
 
@@ -47,6 +49,7 @@ class FakeBot:
         chat_id: int,
         message_id: int,
         reply_markup: object | None = None,
+        parse_mode: str | None = None,
     ) -> object:
         self.edits.append(
             {
@@ -54,6 +57,7 @@ class FakeBot:
                 "chat_id": chat_id,
                 "message_id": message_id,
                 "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
             }
         )
         return object()
@@ -91,6 +95,7 @@ class CleanupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bot.edits[0]["chat_id"], -100)
         self.assertEqual(bot.edits[0]["message_id"], 55)
         self.assertIsNone(bot.edits[0]["reply_markup"])
+        self.assertEqual(bot.edits[0]["parse_mode"], ParseMode.HTML)
         self.assertTrue(str(bot.edits[0]["text"]).endswith("\n\nсобытие закрыто"))
 
     async def test_run_cleanup_once_skips_message_edit_without_message_id(self) -> None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aiogram import F, Router
-from aiogram.enums import ChatType
+from aiogram.enums import ChatType, ParseMode
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, Message
 
@@ -51,6 +51,7 @@ async def new_event(
     sent_message = await message.answer(
         format_event_message(event, responses),
         reply_markup=build_event_keyboard(event.id),
+        parse_mode=ParseMode.HTML,
     )
     await event_repository.set_event_message_id(event.id, sent_message.message_id)
 
@@ -109,6 +110,7 @@ async def handle_event_action(
         await callback.message.edit_text(
             format_event_message(result.event, responses),
             reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML,
         )
     except TelegramBadRequest as error:
         if "message is not modified" not in str(error):

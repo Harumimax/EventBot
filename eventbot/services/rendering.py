@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -143,25 +144,25 @@ def format_event_message(event: Event, responses: list[EventResponse]) -> str:
     stats = build_event_message_stats(responses)
 
     lines = [
-        f"👉 {event.description} 👈",
+        f"👉 {escape(event.description)} 👈",
         "",
     ]
     if event.is_closed:
         lines.extend(["🔒 Event closed", ""])
 
     lines.append("Going😀:")
-    lines.extend(f"✅ {response.display_name}" for response in going)
+    lines.extend(f"✅ {format_user_link(response)}" for response in going)
     lines.extend(
-        f"➕{guest_number}, from: {response.display_name}"
+        f"➕{guest_number}, from: {format_user_link(response)}"
         for response in going
         for guest_number in range(1, response.guests_count + 1)
     )
 
     lines.extend(["", "Not going😐:"])
-    lines.extend(f"❌ {response.display_name}" for response in not_going)
+    lines.extend(f"❌ {format_user_link(response)}" for response in not_going)
 
     lines.extend(["", "Not sure🤔:"])
-    lines.extend(f"💭 {response.display_name}" for response in maybe)
+    lines.extend(f"💭 {format_user_link(response)}" for response in maybe)
 
     lines.extend(
         [
@@ -183,6 +184,10 @@ def format_expired_event_message(event: Event, responses: list[EventResponse]) -
         return message
 
     return f"{message}\n\n{EXPIRED_EVENT_SUFFIX}"
+
+
+def format_user_link(response: EventResponse) -> str:
+    return f'<a href="tg://user?id={response.user_id}">{escape(response.display_name)}</a>'
 
 
 def build_event_message_stats(responses: list[EventResponse]) -> EventMessageStats:

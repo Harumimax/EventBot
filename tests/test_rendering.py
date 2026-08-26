@@ -8,6 +8,7 @@ from eventbot.services.rendering import (
     build_join_callback_data,
     format_event_message,
     format_expired_event_message,
+    format_user_link,
     parse_event_callback_data,
     parse_join_callback_data,
 )
@@ -103,6 +104,25 @@ class RenderingTests(unittest.TestCase):
 
         self.assertIn("🔒 Event closed", message)
 
+    def test_format_event_message_escapes_html_text(self) -> None:
+        event = _event(description="Rock & Roll <test>")
+        responses = [
+            _response(
+                user_id=10,
+                display_name="A&B <Max>",
+                status=ResponseStatus.GOING,
+                guests_count=0,
+            )
+        ]
+
+        message = format_event_message(event, responses)
+
+        self.assertIn("👉 Rock &amp; Roll &lt;test&gt; 👈", message)
+        self.assertIn(
+            '✅ <a href="tg://user?id=10">A&amp;B &lt;Max&gt;</a>',
+            message,
+        )
+
     def test_format_expired_event_message_appends_closed_text(self) -> None:
         event = _event(description="Футбол в субботу")
 
@@ -147,15 +167,15 @@ class RenderingTests(unittest.TestCase):
             "👉 Потренить в понедельник в 20:00 👈\n"
             "\n"
             "Going😀:\n"
-            "✅ Арена Альфа\n"
-            "✅ Aleksandr Tenkalyuk\n"
-            "➕1, from: Арена Альфа\n"
+            '✅ <a href="tg://user?id=10">Арена Альфа</a>\n'
+            '✅ <a href="tg://user?id=20">Aleksandr Tenkalyuk</a>\n'
+            '➕1, from: <a href="tg://user?id=10">Арена Альфа</a>\n'
             "\n"
             "Not going😐:\n"
-            "❌ Alb\n"
+            '❌ <a href="tg://user?id=30">Alb</a>\n'
             "\n"
             "Not sure🤔:\n"
-            "💭 Максим\n"
+            '💭 <a href="tg://user?id=40">Максим</a>\n'
             "\n"
             "Total going: 3\n"
             "✅: 2\n"
@@ -177,10 +197,23 @@ class RenderingTests(unittest.TestCase):
 
         message = format_event_message(event, responses)
 
-        self.assertIn("➕1, from: Анна", message)
-        self.assertIn("➕2, from: Анна", message)
-        self.assertIn("➕3, from: Анна", message)
+        self.assertIn('➕1, from: <a href="tg://user?id=10">Анна</a>', message)
+        self.assertIn('➕2, from: <a href="tg://user?id=10">Анна</a>', message)
+        self.assertIn('➕3, from: <a href="tg://user?id=10">Анна</a>', message)
         self.assertIn("Total going: 4", message)
+
+    def test_format_user_link_uses_telegram_user_id(self) -> None:
+        response = _response(
+            user_id=12345,
+            display_name="Максим",
+            status=ResponseStatus.GOING,
+            guests_count=0,
+        )
+
+        self.assertEqual(
+            format_user_link(response),
+            '<a href="tg://user?id=12345">Максим</a>',
+        )
 
     def test_build_event_message_stats_counts_only_going_guests(self) -> None:
         responses = [
