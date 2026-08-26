@@ -5,7 +5,9 @@ from pathlib import Path
 import aiosqlite
 
 
-SCHEMA = """
+CURRENT_SCHEMA_VERSION = 2
+
+SCHEMA_V2 = """
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS events (
@@ -22,19 +24,65 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_chat_id ON events(chat_id);
 CREATE INDEX IF NOT EXISTS idx_events_expires_at ON events(expires_at);
 
-CREATE TABLE IF NOT EXISTS participants (
+CREATE TABLE IF NOT EXISTS event_responses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     display_name TEXT NOT NULL,
-    joined_at TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('going', 'not_going', 'maybe')),
+    guests_count INTEGER NOT NULL DEFAULT 0 CHECK (guests_count >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
     FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
     UNIQUE(event_id, user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_participants_event_id ON participants(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_responses_event_id
+    ON event_responses(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_responses_event_status
+    ON event_responses(event_id, status);
+"""
 
-PRAGMA user_version = 1;
+MIGRATE_V1_TO_V2 = """
+CREATE TABLE IF NOT EXISTS event_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    display_name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('going', 'not_going', 'maybe')),
+    guests_count INTEGER NOT NULL DEFAULT 0 CHECK (guests_count >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+    UNIQUE(event_id, user_id)
+);
+
+INSERT OR IGNORE INTO event_responses (
+    event_id,
+    user_id,
+    display_name,
+    status,
+    guests_count,
+    created_at,
+    updated_at
+)
+SELECT
+    event_id,
+    user_id,
+    display_name,
+    'going',
+    0,
+    joined_at,
+    joined_at
+FROM participants;
+
+CREATE INDEX IF NOT EXISTS idx_event_responses_event_id
+    ON event_responses(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_responses_event_status
+    ON event_responses(event_id, status);
+
+DROP TABLE participants;
+PRAGMA user_version = 2;
 """
 
 
@@ -52,10 +100,31 @@ class Database:
     async def initialize(self) -> None:
         connection = await self.connect()
         try:
-            await connection.executescript(SCHEMA)
+            version = await _get_user_version(connection)
+
+            if version == 0:
+                await connection.executescript(SCHEMA_V2)
+                await _set_user_version(connection, CURRENT_SCHEMA_VERSION)
+            elif version == 1:
+                await connection.executescript(MIGRATE_V1_TO_V2)
+            elif version == CURRENT_SCHEMA_VERSION:
+                await connection.executescript(SCHEMA_V2)
+            else:
+                raise RuntimeError(f"Unsupported database schema version: {version}")
+
             await connection.commit()
         finally:
             await connection.close()
+
+
+async def _get_user_version(connection: aiosqlite.Connection) -> int:
+    cursor = await connection.execute("PRAGMA user_version;")
+    row = await cursor.fetchone()
+    return int(row[0])
+
+
+async def _set_user_version(connection: aiosqlite.Connection, version: int) -> None:
+    await connection.execute(f"PRAGMA user_version = {version};")
 
 
 def create_database(path: str | Path) -> Database:

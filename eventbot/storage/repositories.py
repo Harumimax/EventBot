@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 import aiosqlite
 
@@ -9,6 +10,12 @@ from eventbot.storage.database import Database
 
 
 EVENT_TTL_DAYS = 28
+
+
+class ResponseStatus(StrEnum):
+    GOING = "going"
+    NOT_GOING = "not_going"
+    MAYBE = "maybe"
 
 
 @dataclass(frozen=True)
@@ -21,6 +28,18 @@ class Event:
     created_at: str
     expires_at: str
     is_closed: bool
+
+
+@dataclass(frozen=True)
+class EventResponse:
+    id: int
+    event_id: int
+    user_id: int
+    display_name: str
+    status: ResponseStatus
+    guests_count: int
+    created_at: str
+    updated_at: str
 
 
 @dataclass(frozen=True)
@@ -101,6 +120,202 @@ class EventRepository:
 
         return _event_from_row(row) if row else None
 
+    async def set_response_status(
+        self,
+        *,
+        event_id: int,
+        user_id: int,
+        display_name: str,
+        status: ResponseStatus,
+        now: datetime | None = None,
+    ) -> EventResponse:
+        current_timestamp = _format_timestamp(now or datetime.now(UTC))
+
+        connection = await self.database.connect()
+        try:
+            await connection.execute(
+                """
+                INSERT INTO event_responses (
+                    event_id,
+                    user_id,
+                    display_name,
+                    status,
+                    guests_count,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, 0, ?, ?)
+                ON CONFLICT(event_id, user_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    status = excluded.status,
+                    guests_count = CASE
+                        WHEN excluded.status = 'going'
+                            THEN event_responses.guests_count
+                        ELSE 0
+                    END,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    event_id,
+                    user_id,
+                    display_name,
+                    status.value,
+                    current_timestamp,
+                    current_timestamp,
+                ),
+            )
+            await connection.commit()
+        finally:
+            await connection.close()
+
+        response = await self.get_event_response(event_id=event_id, user_id=user_id)
+        if response is None:
+            raise RuntimeError("Event response was not found")
+
+        return response
+
+    async def get_event_response(
+        self,
+        *,
+        event_id: int,
+        user_id: int,
+    ) -> EventResponse | None:
+        connection = await self.database.connect()
+        try:
+            row = await _fetch_one(
+                connection,
+                """
+                SELECT *
+                FROM event_responses
+                WHERE event_id = ? AND user_id = ?
+                """,
+                (event_id, user_id),
+            )
+        finally:
+            await connection.close()
+
+        return _event_response_from_row(row) if row else None
+
+    async def list_event_responses(self, event_id: int) -> list[EventResponse]:
+        connection = await self.database.connect()
+        try:
+            cursor = await connection.execute(
+                """
+                SELECT *
+                FROM event_responses
+                WHERE event_id = ?
+                ORDER BY updated_at ASC, id ASC
+                """,
+                (event_id,),
+            )
+            rows = await cursor.fetchall()
+        finally:
+            await connection.close()
+
+        return [_event_response_from_row(row) for row in rows]
+
+    async def increment_guests(
+        self,
+        *,
+        event_id: int,
+        user_id: int,
+        display_name: str,
+        now: datetime | None = None,
+    ) -> EventResponse:
+        current_timestamp = _format_timestamp(now or datetime.now(UTC))
+
+        connection = await self.database.connect()
+        try:
+            await connection.execute(
+                """
+                INSERT INTO event_responses (
+                    event_id,
+                    user_id,
+                    display_name,
+                    status,
+                    guests_count,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, 'going', 1, ?, ?)
+                ON CONFLICT(event_id, user_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    status = 'going',
+                    guests_count = event_responses.guests_count + 1,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    event_id,
+                    user_id,
+                    display_name,
+                    current_timestamp,
+                    current_timestamp,
+                ),
+            )
+            await connection.commit()
+        finally:
+            await connection.close()
+
+        response = await self.get_event_response(event_id=event_id, user_id=user_id)
+        if response is None:
+            raise RuntimeError("Event response was not found")
+
+        return response
+
+    async def decrement_guests(
+        self,
+        *,
+        event_id: int,
+        user_id: int,
+        now: datetime | None = None,
+    ) -> EventResponse | None:
+        current_timestamp = _format_timestamp(now or datetime.now(UTC))
+
+        connection = await self.database.connect()
+        try:
+            await connection.execute(
+                """
+                UPDATE event_responses
+                SET
+                    guests_count = MAX(guests_count - 1, 0),
+                    updated_at = ?
+                WHERE event_id = ? AND user_id = ?
+                """,
+                (current_timestamp, event_id, user_id),
+            )
+            await connection.commit()
+        finally:
+            await connection.close()
+
+        return await self.get_event_response(event_id=event_id, user_id=user_id)
+
+    async def clear_guests(
+        self,
+        *,
+        event_id: int,
+        user_id: int,
+        now: datetime | None = None,
+    ) -> EventResponse | None:
+        current_timestamp = _format_timestamp(now or datetime.now(UTC))
+
+        connection = await self.database.connect()
+        try:
+            await connection.execute(
+                """
+                UPDATE event_responses
+                SET
+                    guests_count = 0,
+                    updated_at = ?
+                WHERE event_id = ? AND user_id = ?
+                """,
+                (current_timestamp, event_id, user_id),
+            )
+            await connection.commit()
+        finally:
+            await connection.close()
+
+        return await self.get_event_response(event_id=event_id, user_id=user_id)
+
     async def add_participant(
         self,
         *,
@@ -109,27 +324,16 @@ class EventRepository:
         display_name: str,
         now: datetime | None = None,
     ) -> bool:
-        joined_at = _format_timestamp(now or datetime.now(UTC))
+        existing = await self.get_event_response(event_id=event_id, user_id=user_id)
+        await self.set_response_status(
+            event_id=event_id,
+            user_id=user_id,
+            display_name=display_name,
+            status=ResponseStatus.GOING,
+            now=now,
+        )
 
-        connection = await self.database.connect()
-        try:
-            cursor = await connection.execute(
-                """
-                INSERT OR IGNORE INTO participants (
-                    event_id,
-                    user_id,
-                    display_name,
-                    joined_at
-                )
-                VALUES (?, ?, ?, ?)
-                """,
-                (event_id, user_id, display_name, joined_at),
-            )
-            await connection.commit()
-
-            return cursor.rowcount == 1
-        finally:
-            await connection.close()
+        return existing is None or existing.status != ResponseStatus.GOING
 
     async def list_participants(self, event_id: int) -> list[Participant]:
         connection = await self.database.connect()
@@ -137,17 +341,17 @@ class EventRepository:
             cursor = await connection.execute(
                 """
                 SELECT *
-                FROM participants
-                WHERE event_id = ?
-                ORDER BY joined_at ASC, id ASC
+                FROM event_responses
+                WHERE event_id = ? AND status = ?
+                ORDER BY updated_at ASC, id ASC
                 """,
-                (event_id,),
+                (event_id, ResponseStatus.GOING.value),
             )
             rows = await cursor.fetchall()
         finally:
             await connection.close()
 
-        return [_participant_from_row(row) for row in rows]
+        return [_participant_from_response_row(row) for row in rows]
 
     async def delete_expired_events(self, now: datetime | None = None) -> int:
         current_timestamp = _format_timestamp(now or datetime.now(UTC))
@@ -194,11 +398,24 @@ def _event_from_row(row: aiosqlite.Row) -> Event:
     )
 
 
-def _participant_from_row(row: aiosqlite.Row) -> Participant:
+def _event_response_from_row(row: aiosqlite.Row) -> EventResponse:
+    return EventResponse(
+        id=row["id"],
+        event_id=row["event_id"],
+        user_id=row["user_id"],
+        display_name=row["display_name"],
+        status=ResponseStatus(row["status"]),
+        guests_count=row["guests_count"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _participant_from_response_row(row: aiosqlite.Row) -> Participant:
     return Participant(
         id=row["id"],
         event_id=row["event_id"],
         user_id=row["user_id"],
         display_name=row["display_name"],
-        joined_at=row["joined_at"],
+        joined_at=row["updated_at"],
     )
