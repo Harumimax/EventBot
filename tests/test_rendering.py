@@ -29,6 +29,14 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(callback_data, "event:going:123")
         self.assertEqual(parse_join_callback_data(callback_data), 123)
 
+    def test_parse_join_callback_data_accepts_legacy_join_action(self) -> None:
+        parsed = parse_event_callback_data("event:join:123")
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.action, EventAction.GOING)
+        self.assertEqual(parsed.event_id, 123)
+        self.assertEqual(parse_join_callback_data("event:join:123"), 123)
+
     def test_parse_event_callback_data_rejects_invalid_data(self) -> None:
         self.assertIsNone(parse_event_callback_data(None))
         self.assertIsNone(parse_event_callback_data(""))
@@ -86,6 +94,13 @@ class RenderingTests(unittest.TestCase):
             "❌: 0\n"
             "💭: 0",
         )
+
+    def test_format_event_message_marks_closed_event(self) -> None:
+        event = _event(description="Футбол в субботу", is_closed=True)
+
+        message = format_event_message(event, [])
+
+        self.assertIn("🔒 Event closed", message)
 
     def test_format_event_message_with_grouped_responses_and_guests(self) -> None:
         event = _event(description="Потренить в понедельник в 20:00")
@@ -174,7 +189,7 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(stats.maybe_count, 1)
 
 
-def _event(description: str) -> Event:
+def _event(description: str, is_closed: bool = False) -> Event:
     return Event(
         id=1,
         chat_id=-100,
@@ -183,7 +198,7 @@ def _event(description: str) -> Event:
         description=description,
         created_at="2026-08-25T12:00:00+00:00",
         expires_at="2026-09-22T12:00:00+00:00",
-        is_closed=False,
+        is_closed=is_closed,
     )
 
 

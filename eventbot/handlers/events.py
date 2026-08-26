@@ -5,14 +5,14 @@ from aiogram.enums import ChatType
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, Message
 
-from eventbot.services.participation import (
-    join_feedback_text,
-    should_update_event_message_after_join,
-)
+from aiogram.exceptions import TelegramBadRequest
+
+from eventbot.services.event_actions import apply_event_action
 from eventbot.services.rendering import (
+    EventAction,
     build_event_keyboard,
     format_event_message,
-    parse_join_callback_data,
+    parse_event_callback_data,
 )
 from eventbot.storage.repositories import EventRepository
 
@@ -55,17 +55,17 @@ async def new_event(
     await event_repository.set_event_message_id(event.id, sent_message.message_id)
 
 
-@router.callback_query(F.data.startswith("event:join:"))
-async def join_event(
+@router.callback_query(F.data.startswith("event:"))
+async def handle_event_action(
     callback: CallbackQuery,
     event_repository: EventRepository,
 ) -> None:
-    event_id = parse_join_callback_data(callback.data)
-    if event_id is None:
+    parsed_callback = parse_event_callback_data(callback.data)
+    if parsed_callback is None:
         await callback.answer("Не получилось прочитать кнопку события.", show_alert=True)
         return
 
-    event = await event_repository.get_event(event_id)
+    event = await event_repository.get_event(parsed_callback.event_id)
     if event is None:
         await callback.answer("Событие уже не найдено.", show_alert=True)
         return
@@ -86,21 +86,32 @@ async def join_event(
         await callback.answer("Запись на событие закрыта.", show_alert=True)
         return
 
-    was_added = await event_repository.add_participant(
-        event_id=event.id,
+    result = await apply_event_action(
+        repository=event_repository,
+        event=event,
+        action=parsed_callback.action,
         user_id=callback.from_user.id,
         display_name=callback.from_user.full_name,
     )
 
-    if not should_update_event_message_after_join(was_added):
-        await callback.answer(join_feedback_text(was_added))
+    if not result.should_update_message:
+        await callback.answer(result.feedback_text)
         return
 
     responses = await event_repository.list_event_responses(event.id)
-
-    await callback.message.edit_text(
-        format_event_message(event, responses),
-        reply_markup=build_event_keyboard(event.id),
+    reply_markup = (
+        None
+        if result.remove_keyboard or parsed_callback.action == EventAction.CLOSE
+        else build_event_keyboard(event.id)
     )
 
-    await callback.answer(join_feedback_text(was_added))
+    try:
+        await callback.message.edit_text(
+            format_event_message(result.event, responses),
+            reply_markup=reply_markup,
+        )
+    except TelegramBadRequest as error:
+        if "message is not modified" not in str(error):
+            raise
+
+    await callback.answer(result.feedback_text)

@@ -55,10 +55,13 @@ def parse_event_callback_data(callback_data: str | None) -> EventCallback | None
     if prefix != CALLBACK_PREFIX or not raw_event_id.isdecimal():
         return None
 
-    try:
-        action = EventAction(raw_action)
-    except ValueError:
-        return None
+    if raw_action == "join":
+        action = EventAction.GOING
+    else:
+        try:
+            action = EventAction(raw_action)
+        except ValueError:
+            return None
 
     event_id = int(raw_event_id)
     if event_id <= 0:
@@ -141,8 +144,11 @@ def format_event_message(event: Event, responses: list[EventResponse]) -> str:
     lines = [
         f"👉 {event.description} 👈",
         "",
-        "Going😀:",
     ]
+    if event.is_closed:
+        lines.extend(["🔒 Event closed", ""])
+
+    lines.append("Going😀:")
     lines.extend(f"✅ {response.display_name}" for response in going)
     lines.extend(
         f"➕{guest_number}, from: {response.display_name}"

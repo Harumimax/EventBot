@@ -107,6 +107,19 @@ class EventRepository:
         finally:
             await connection.close()
 
+    async def close_event(self, event_id: int) -> Event | None:
+        connection = await self.database.connect()
+        try:
+            await connection.execute(
+                "UPDATE events SET is_closed = 1 WHERE id = ?",
+                (event_id,),
+            )
+            await connection.commit()
+        finally:
+            await connection.close()
+
+        return await self.get_event(event_id)
+
     async def get_event(self, event_id: int) -> Event | None:
         connection = await self.database.connect()
         try:

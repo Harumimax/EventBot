@@ -70,6 +70,18 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(updated_event)
         self.assertEqual(updated_event.message_id, 777)
 
+    async def test_close_event_marks_event_as_closed(self) -> None:
+        event = await self.repository.create_event(
+            chat_id=-100,
+            created_by_user_id=42,
+            description="Кино",
+        )
+
+        closed_event = await self.repository.close_event(event.id)
+
+        self.assertIsNotNone(closed_event)
+        self.assertTrue(closed_event.is_closed)
+
     async def test_add_participant_prevents_duplicates(self) -> None:
         event = await self.repository.create_event(
             chat_id=-100,
