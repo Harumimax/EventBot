@@ -9,3 +9,4 @@ data/
 .coverage
 *.egg-info/
 docs/
+.agents
