@@ -146,7 +146,7 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated_response.status, ResponseStatus.NOT_GOING)
         self.assertEqual(len(responses), 1)
 
-    async def test_increment_guests_creates_going_response(self) -> None:
+    async def test_increment_guests_creates_response_without_personal_status(self) -> None:
         event = await self.repository.create_event(
             chat_id=-100,
             created_by_user_id=42,
@@ -164,9 +164,32 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
             display_name="Максим",
         )
 
-        self.assertEqual(first_response.status, ResponseStatus.GOING)
+        self.assertEqual(first_response.status, ResponseStatus.NO_ANSWER)
         self.assertEqual(first_response.guests_count, 1)
+        self.assertEqual(second_response.status, ResponseStatus.NO_ANSWER)
         self.assertEqual(second_response.guests_count, 2)
+
+    async def test_increment_guests_preserves_existing_status(self) -> None:
+        event = await self.repository.create_event(
+            chat_id=-100,
+            created_by_user_id=42,
+            description="Футбол",
+        )
+        await self.repository.set_response_status(
+            event_id=event.id,
+            user_id=1001,
+            display_name="Максим",
+            status=ResponseStatus.NOT_GOING,
+        )
+
+        response = await self.repository.increment_guests(
+            event_id=event.id,
+            user_id=1001,
+            display_name="Максим",
+        )
+
+        self.assertEqual(response.status, ResponseStatus.NOT_GOING)
+        self.assertEqual(response.guests_count, 1)
 
     async def test_decrement_guests_does_not_go_below_zero(self) -> None:
         event = await self.repository.create_event(
@@ -219,7 +242,7 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(response)
         self.assertEqual(response.guests_count, 0)
 
-    async def test_non_going_status_resets_guest_count(self) -> None:
+    async def test_non_going_status_preserves_guest_count(self) -> None:
         event = await self.repository.create_event(
             chat_id=-100,
             created_by_user_id=42,
@@ -239,7 +262,109 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(response.status, ResponseStatus.NOT_GOING)
-        self.assertEqual(response.guests_count, 0)
+        self.assertEqual(response.guests_count, 1)
+
+    async def test_migrates_v2_database_to_v3_status_constraint(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "v2.sqlite"
+            connection = await aiosqlite.connect(database_path)
+            try:
+                await connection.executescript(
+                    """
+                    PRAGMA foreign_keys = ON;
+
+                    CREATE TABLE events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id INTEGER NOT NULL,
+                        message_id INTEGER,
+                        created_by_user_id INTEGER NOT NULL,
+                        description TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        is_closed INTEGER NOT NULL DEFAULT 0
+                    );
+
+                    CREATE TABLE event_responses (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        display_name TEXT NOT NULL,
+                        status TEXT NOT NULL CHECK (status IN ('going', 'not_going', 'maybe')),
+                        guests_count INTEGER NOT NULL DEFAULT 0 CHECK (guests_count >= 0),
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+                        UNIQUE(event_id, user_id)
+                    );
+
+                    INSERT INTO events (
+                        id,
+                        chat_id,
+                        message_id,
+                        created_by_user_id,
+                        description,
+                        created_at,
+                        expires_at
+                    )
+                    VALUES (
+                        1,
+                        -100,
+                        55,
+                        42,
+                        'Событие v2',
+                        '2026-08-25T12:00:00+00:00',
+                        '2026-09-22T12:00:00+00:00'
+                    );
+
+                    INSERT INTO event_responses (
+                        event_id,
+                        user_id,
+                        display_name,
+                        status,
+                        guests_count,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (
+                        1,
+                        1001,
+                        'Анна',
+                        'not_going',
+                        2,
+                        '2026-08-25T12:05:00+00:00',
+                        '2026-08-25T12:05:00+00:00'
+                    );
+
+                    PRAGMA user_version = 2;
+                    """
+                )
+                await connection.commit()
+            finally:
+                await connection.close()
+
+            database = create_database(database_path)
+            await database.initialize()
+            repository = EventRepository(database)
+            response = await repository.increment_guests(
+                event_id=1,
+                user_id=2002,
+                display_name="Максим",
+            )
+            responses = await repository.list_event_responses(1)
+
+            migrated_connection = await database.connect()
+            try:
+                version_cursor = await migrated_connection.execute("PRAGMA user_version;")
+                version = (await version_cursor.fetchone())[0]
+            finally:
+                await migrated_connection.close()
+
+        self.assertEqual(version, CURRENT_SCHEMA_VERSION)
+        self.assertEqual(response.status, ResponseStatus.NO_ANSWER)
+        self.assertEqual(response.guests_count, 1)
+        self.assertEqual(len(responses), 2)
+        self.assertEqual(responses[0].status, ResponseStatus.NOT_GOING)
+        self.assertEqual(responses[0].guests_count, 2)
 
     async def test_list_expired_events_returns_only_expired_events(self) -> None:
         now = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)

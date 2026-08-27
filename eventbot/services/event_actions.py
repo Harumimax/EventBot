@@ -218,7 +218,6 @@ async def _set_status(
         existing is None
         or existing.status != status
         or existing.display_name != display_name
-        or (status != ResponseStatus.GOING and existing.guests_count != 0)
     )
 
     return EventActionResult(

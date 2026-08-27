@@ -154,7 +154,7 @@ def format_event_message(event: Event, responses: list[EventResponse]) -> str:
     lines.extend(f"✅ {format_user_link(response)}" for response in going)
     lines.extend(
         f"➕{guest_number}, from: {format_user_link(response)}"
-        for response in going
+        for response in responses
         for guest_number in range(1, response.guests_count + 1)
     )
 
@@ -193,11 +193,7 @@ def format_user_link(response: EventResponse) -> str:
 def build_event_message_stats(responses: list[EventResponse]) -> EventMessageStats:
     return EventMessageStats(
         going_count=sum(1 for response in responses if response.status == ResponseStatus.GOING),
-        guests_count=sum(
-            response.guests_count
-            for response in responses
-            if response.status == ResponseStatus.GOING
-        ),
+        guests_count=sum(response.guests_count for response in responses),
         not_going_count=sum(
             1 for response in responses if response.status == ResponseStatus.NOT_GOING
         ),

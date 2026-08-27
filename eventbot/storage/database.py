@@ -5,9 +5,9 @@ from pathlib import Path
 import aiosqlite
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
-SCHEMA_V2 = """
+SCHEMA_V3 = """
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS events (
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS event_responses (
     event_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     display_name TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('going', 'not_going', 'maybe')),
+    status TEXT NOT NULL CHECK (status IN ('no_answer', 'going', 'not_going', 'maybe')),
     guests_count INTEGER NOT NULL DEFAULT 0 CHECK (guests_count >= 0),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -85,6 +85,52 @@ DROP TABLE participants;
 PRAGMA user_version = 2;
 """
 
+MIGRATE_V2_TO_V3 = """
+CREATE TABLE event_responses_v3 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    display_name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('no_answer', 'going', 'not_going', 'maybe')),
+    guests_count INTEGER NOT NULL DEFAULT 0 CHECK (guests_count >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+    UNIQUE(event_id, user_id)
+);
+
+INSERT INTO event_responses_v3 (
+    id,
+    event_id,
+    user_id,
+    display_name,
+    status,
+    guests_count,
+    created_at,
+    updated_at
+)
+SELECT
+    id,
+    event_id,
+    user_id,
+    display_name,
+    status,
+    guests_count,
+    created_at,
+    updated_at
+FROM event_responses;
+
+DROP TABLE event_responses;
+ALTER TABLE event_responses_v3 RENAME TO event_responses;
+
+CREATE INDEX IF NOT EXISTS idx_event_responses_event_id
+    ON event_responses(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_responses_event_status
+    ON event_responses(event_id, status);
+
+PRAGMA user_version = 3;
+"""
+
 
 class Database:
     def __init__(self, path: Path) -> None:
@@ -103,12 +149,15 @@ class Database:
             version = await _get_user_version(connection)
 
             if version == 0:
-                await connection.executescript(SCHEMA_V2)
+                await connection.executescript(SCHEMA_V3)
                 await _set_user_version(connection, CURRENT_SCHEMA_VERSION)
             elif version == 1:
                 await connection.executescript(MIGRATE_V1_TO_V2)
+                await connection.executescript(MIGRATE_V2_TO_V3)
+            elif version == 2:
+                await connection.executescript(MIGRATE_V2_TO_V3)
             elif version == CURRENT_SCHEMA_VERSION:
-                await connection.executescript(SCHEMA_V2)
+                await connection.executescript(SCHEMA_V3)
             else:
                 raise RuntimeError(f"Unsupported database schema version: {version}")
 

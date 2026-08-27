@@ -150,13 +150,19 @@ class RenderingTests(unittest.TestCase):
                 user_id=30,
                 display_name="Alb",
                 status=ResponseStatus.NOT_GOING,
-                guests_count=0,
+                guests_count=2,
             ),
             _response(
                 user_id=40,
                 display_name="Максим",
                 status=ResponseStatus.MAYBE,
-                guests_count=0,
+                guests_count=1,
+            ),
+            _response(
+                user_id=50,
+                display_name="Олег",
+                status=ResponseStatus.NO_ANSWER,
+                guests_count=1,
             ),
         ]
 
@@ -170,6 +176,10 @@ class RenderingTests(unittest.TestCase):
             '✅ <a href="tg://user?id=10">Арена Альфа</a>\n'
             '✅ <a href="tg://user?id=20">Aleksandr Tenkalyuk</a>\n'
             '➕1, from: <a href="tg://user?id=10">Арена Альфа</a>\n'
+            '➕1, from: <a href="tg://user?id=30">Alb</a>\n'
+            '➕2, from: <a href="tg://user?id=30">Alb</a>\n'
+            '➕1, from: <a href="tg://user?id=40">Максим</a>\n'
+            '➕1, from: <a href="tg://user?id=50">Олег</a>\n'
             "\n"
             "Not going😐:\n"
             '❌ <a href="tg://user?id=30">Alb</a>\n'
@@ -177,9 +187,9 @@ class RenderingTests(unittest.TestCase):
             "Not sure🤔:\n"
             '💭 <a href="tg://user?id=40">Максим</a>\n'
             "\n"
-            "Total going: 3\n"
+            "Total going: 7\n"
             "✅: 2\n"
-            "➕: 1\n"
+            "➕: 5\n"
             "❌: 1\n"
             "💭: 1",
         )
@@ -215,18 +225,19 @@ class RenderingTests(unittest.TestCase):
             '<a href="tg://user?id=12345">Максим</a>',
         )
 
-    def test_build_event_message_stats_counts_only_going_guests(self) -> None:
+    def test_build_event_message_stats_counts_all_guests(self) -> None:
         responses = [
             _response(10, "Going", ResponseStatus.GOING, guests_count=2),
             _response(20, "No", ResponseStatus.NOT_GOING, guests_count=5),
             _response(30, "Maybe", ResponseStatus.MAYBE, guests_count=4),
+            _response(40, "No answer", ResponseStatus.NO_ANSWER, guests_count=3),
         ]
 
         stats = build_event_message_stats(responses)
 
         self.assertEqual(stats.going_count, 1)
-        self.assertEqual(stats.guests_count, 2)
-        self.assertEqual(stats.total_going, 3)
+        self.assertEqual(stats.guests_count, 14)
+        self.assertEqual(stats.total_going, 15)
         self.assertEqual(stats.not_going_count, 1)
         self.assertEqual(stats.maybe_count, 1)
 

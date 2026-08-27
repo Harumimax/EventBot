@@ -13,6 +13,7 @@ EVENT_TTL_DAYS = 28
 
 
 class ResponseStatus(StrEnum):
+    NO_ANSWER = "no_answer"
     GOING = "going"
     NOT_GOING = "not_going"
     MAYBE = "maybe"
@@ -194,11 +195,6 @@ class EventRepository:
                 ON CONFLICT(event_id, user_id) DO UPDATE SET
                     display_name = excluded.display_name,
                     status = excluded.status,
-                    guests_count = CASE
-                        WHEN excluded.status = 'going'
-                            THEN event_responses.guests_count
-                        ELSE 0
-                    END,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -283,10 +279,9 @@ class EventRepository:
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, 'going', 1, ?, ?)
+                VALUES (?, ?, ?, 'no_answer', 1, ?, ?)
                 ON CONFLICT(event_id, user_id) DO UPDATE SET
                     display_name = excluded.display_name,
-                    status = 'going',
                     guests_count = event_responses.guests_count + 1,
                     updated_at = excluded.updated_at
                 """,

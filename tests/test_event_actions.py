@@ -31,11 +31,7 @@ class FakeEventActionRepository:
         status: ResponseStatus,
     ) -> EventResponse:
         existing = self.responses.get((event_id, user_id))
-        guests_count = (
-            existing.guests_count
-            if existing is not None and status == ResponseStatus.GOING
-            else 0
-        )
+        guests_count = existing.guests_count if existing is not None else 0
         response = _response(
             event_id=event_id,
             user_id=user_id,
@@ -58,7 +54,7 @@ class FakeEventActionRepository:
             event_id=event_id,
             user_id=user_id,
             display_name=display_name,
-            status=ResponseStatus.GOING,
+            status=existing.status if existing else ResponseStatus.NO_ANSWER,
             guests_count=(existing.guests_count if existing else 0) + 1,
         )
         self.responses[(event_id, user_id)] = response
@@ -143,7 +139,7 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.should_update_message)
         self.assertEqual(result.feedback_text, "You are already going.")
 
-    async def test_not_going_resets_guests_and_updates_message(self) -> None:
+    async def test_not_going_preserves_guests_and_updates_message(self) -> None:
         repository = FakeEventActionRepository()
         repository.responses[(1, 1001)] = _response(
             event_id=1,
@@ -163,10 +159,10 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
 
         response = repository.responses[(1, 1001)]
         self.assertEqual(response.status, ResponseStatus.NOT_GOING)
-        self.assertEqual(response.guests_count, 0)
+        self.assertEqual(response.guests_count, 2)
         self.assertTrue(result.should_update_message)
 
-    async def test_plus_one_updates_message(self) -> None:
+    async def test_plus_one_creates_response_without_personal_status(self) -> None:
         repository = FakeEventActionRepository()
 
         result = await apply_event_action(
@@ -178,10 +174,33 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
         )
 
         response = repository.responses[(1, 1001)]
-        self.assertEqual(response.status, ResponseStatus.GOING)
+        self.assertEqual(response.status, ResponseStatus.NO_ANSWER)
         self.assertEqual(response.guests_count, 1)
         self.assertTrue(result.should_update_message)
         self.assertEqual(result.feedback_text, "Added +1.")
+
+    async def test_plus_one_preserves_not_going_status(self) -> None:
+        repository = FakeEventActionRepository()
+        repository.responses[(1, 1001)] = _response(
+            event_id=1,
+            user_id=1001,
+            display_name="Максим",
+            status=ResponseStatus.NOT_GOING,
+            guests_count=1,
+        )
+
+        result = await apply_event_action(
+            repository=repository,
+            event=_event(),
+            action=EventAction.PLUS_ONE,
+            user_id=1001,
+            display_name="Максим",
+        )
+
+        response = repository.responses[(1, 1001)]
+        self.assertEqual(response.status, ResponseStatus.NOT_GOING)
+        self.assertEqual(response.guests_count, 2)
+        self.assertTrue(result.should_update_message)
 
     async def test_minus_one_without_guests_does_not_update_message(self) -> None:
         repository = FakeEventActionRepository()
