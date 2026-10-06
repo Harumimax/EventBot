@@ -26,10 +26,10 @@ class EventHandlerHelperTests(unittest.TestCase):
         self.assertEqual(truncated, f"{'а' * MAX_EVENT_DESCRIPTION_LENGTH}...")
         self.assertEqual(len(truncated), MAX_EVENT_DESCRIPTION_LENGTH + 3)
 
-    def test_build_response_display_name_adds_username_to_full_name(self) -> None:
+    def test_build_response_display_name_uses_full_name_without_username_suffix(self) -> None:
         self.assertEqual(
             build_response_display_name(full_name="Максим Иванов", username="maxim"),
-            "Максим Иванов (@maxim)",
+            "Максим Иванов",
         )
 
     def test_build_response_display_name_uses_username_without_full_name(self) -> None:

@@ -239,6 +239,19 @@ class RenderingTests(unittest.TestCase):
             '<a href="tg://user?id=12345">Максим</a>',
         )
 
+    def test_format_user_link_hides_username_suffix(self) -> None:
+        response = _response(
+            user_id=12345,
+            display_name="Латухин Максим (@harumimax)",
+            status=ResponseStatus.GOING,
+            guests_count=0,
+        )
+
+        self.assertEqual(
+            format_user_link(response),
+            '<a href="tg://user?id=12345">Латухин Максим</a>',
+        )
+
     def test_format_response_time_uses_moscow_timezone_and_russian_month(self) -> None:
         self.assertEqual(
             format_response_time("2026-10-10T09:10:00+00:00"),

@@ -137,8 +137,8 @@ def build_response_display_name(*, full_name: str, username: str | None) -> str:
     normalized_full_name = full_name.strip()
     normalized_username = (username or "").strip()
 
-    if normalized_full_name and normalized_username:
-        return f"{normalized_full_name} (@{normalized_username})"
+    if normalized_full_name:
+        return normalized_full_name
 
     if normalized_username:
         return f"@{normalized_username}"

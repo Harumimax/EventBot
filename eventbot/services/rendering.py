@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
@@ -12,6 +14,7 @@ from eventbot.storage.repositories import Event, EventGuest, EventResponse, Resp
 
 CALLBACK_PREFIX = "event"
 EXPIRED_EVENT_SUFFIX = "событие закрыто"
+USERNAME_SUFFIX_PATTERN = re.compile(r"\s+\(@[^)]+\)$")
 MOSCOW_TIMEZONE = timezone(timedelta(hours=3), "Europe/Moscow")
 MONTH_NAMES_RU = {
     1: "января",
@@ -211,7 +214,12 @@ def format_expired_event_message(
 
 
 def format_user_link(response: EventResponse | EventGuest) -> str:
-    return f'<a href="tg://user?id={response.user_id}">{escape(response.display_name)}</a>'
+    display_name = format_display_name(response.display_name)
+    return f'<a href="tg://user?id={response.user_id}">{escape(display_name)}</a>'
+
+
+def format_display_name(display_name: str) -> str:
+    return USERNAME_SUFFIX_PATTERN.sub("", display_name).strip()
 
 
 def format_response_line(response: EventResponse) -> str:
