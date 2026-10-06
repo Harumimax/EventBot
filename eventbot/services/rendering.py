@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from html import escape
 
@@ -11,6 +12,21 @@ from eventbot.storage.repositories import Event, EventResponse, ResponseStatus
 
 CALLBACK_PREFIX = "event"
 EXPIRED_EVENT_SUFFIX = "событие закрыто"
+MOSCOW_TIMEZONE = timezone(timedelta(hours=3), "Europe/Moscow")
+MONTH_NAMES_RU = {
+    1: "января",
+    2: "февраля",
+    3: "марта",
+    4: "апреля",
+    5: "мая",
+    6: "июня",
+    7: "июля",
+    8: "августа",
+    9: "сентября",
+    10: "октября",
+    11: "ноября",
+    12: "декабря",
+}
 
 
 class EventAction(StrEnum):
@@ -151,18 +167,18 @@ def format_event_message(event: Event, responses: list[EventResponse]) -> str:
         lines.extend(["🔒 Event closed", ""])
 
     lines.append("Going😀:")
-    lines.extend(f"✅ {format_user_link(response)}" for response in going)
+    lines.extend(f"✅ {format_response_line(response)}" for response in going)
     lines.extend(
-        f"➕{guest_number}, from: {format_user_link(response)}"
+        f"➕{guest_number}, from: {format_response_line(response)}"
         for response in responses
         for guest_number in range(1, response.guests_count + 1)
     )
 
     lines.extend(["", "Not going😐:"])
-    lines.extend(f"❌ {format_user_link(response)}" for response in not_going)
+    lines.extend(f"❌ {format_response_line(response)}" for response in not_going)
 
     lines.extend(["", "Not sure🤔:"])
-    lines.extend(f"💭 {format_user_link(response)}" for response in maybe)
+    lines.extend(f"💭 {format_response_line(response)}" for response in maybe)
 
     lines.extend(
         [
@@ -188,6 +204,20 @@ def format_expired_event_message(event: Event, responses: list[EventResponse]) -
 
 def format_user_link(response: EventResponse) -> str:
     return f'<a href="tg://user?id={response.user_id}">{escape(response.display_name)}</a>'
+
+
+def format_response_line(response: EventResponse) -> str:
+    return f"{format_user_link(response)} - {format_response_time(response.updated_at)}"
+
+
+def format_response_time(timestamp: str) -> str:
+    value = datetime.fromisoformat(timestamp)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=MOSCOW_TIMEZONE)
+
+    local_value = value.astimezone(MOSCOW_TIMEZONE)
+    month_name = MONTH_NAMES_RU[local_value.month]
+    return f"{local_value.day} {month_name} {local_value:%H:%M}"
 
 
 def build_event_message_stats(responses: list[EventResponse]) -> EventMessageStats:
