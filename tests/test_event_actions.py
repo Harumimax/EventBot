@@ -2,12 +2,13 @@ import unittest
 
 from eventbot.services.event_actions import apply_event_action
 from eventbot.services.rendering import EventAction
-from eventbot.storage.repositories import Event, EventResponse, ResponseStatus
+from eventbot.storage.repositories import Event, EventGuest, EventResponse, ResponseStatus
 
 
 class FakeEventActionRepository:
     def __init__(self) -> None:
         self.responses: dict[tuple[int, int], EventResponse] = {}
+        self.guests: list[EventGuest] = []
         self.closed_event_ids: list[int] = []
 
     async def close_event(self, event_id: int) -> Event | None:
@@ -42,63 +43,52 @@ class FakeEventActionRepository:
         self.responses[(event_id, user_id)] = response
         return response
 
-    async def increment_guests(
+    async def add_guest(
         self,
         *,
         event_id: int,
         user_id: int,
         display_name: str,
-    ) -> EventResponse:
-        existing = self.responses.get((event_id, user_id))
-        response = _response(
+    ) -> EventGuest:
+        guest = _guest(
+            id=len(self.guests) + 1,
             event_id=event_id,
             user_id=user_id,
             display_name=display_name,
-            status=existing.status if existing else ResponseStatus.NO_ANSWER,
-            guests_count=(existing.guests_count if existing else 0) + 1,
         )
-        self.responses[(event_id, user_id)] = response
-        return response
+        self.guests.append(guest)
+        return guest
 
-    async def decrement_guests(
+    async def remove_last_guest(
         self,
         *,
         event_id: int,
         user_id: int,
-    ) -> EventResponse | None:
-        existing = self.responses.get((event_id, user_id))
-        if existing is None:
-            return None
+    ) -> EventGuest | None:
+        for index in range(len(self.guests) - 1, -1, -1):
+            guest = self.guests[index]
+            if guest.event_id == event_id and guest.user_id == user_id:
+                return self.guests.pop(index)
 
-        response = _response(
-            event_id=event_id,
-            user_id=user_id,
-            display_name=existing.display_name,
-            status=existing.status,
-            guests_count=max(existing.guests_count - 1, 0),
-        )
-        self.responses[(event_id, user_id)] = response
-        return response
+        return None
 
     async def clear_guests(
         self,
         *,
         event_id: int,
         user_id: int,
-    ) -> EventResponse | None:
-        existing = self.responses.get((event_id, user_id))
-        if existing is None:
-            return None
-
-        response = _response(
-            event_id=event_id,
-            user_id=user_id,
-            display_name=existing.display_name,
-            status=existing.status,
-            guests_count=0,
-        )
-        self.responses[(event_id, user_id)] = response
-        return response
+    ) -> int:
+        matching_guests = [
+            guest
+            for guest in self.guests
+            if guest.event_id == event_id and guest.user_id == user_id
+        ]
+        self.guests = [
+            guest
+            for guest in self.guests
+            if guest.event_id != event_id or guest.user_id != user_id
+        ]
+        return len(matching_guests)
 
 
 class EventActionTests(unittest.IsolatedAsyncioTestCase):
@@ -146,8 +136,12 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
             user_id=1001,
             display_name="Максим",
             status=ResponseStatus.GOING,
-            guests_count=2,
+            guests_count=0,
         )
+        repository.guests = [
+            _guest(id=1, event_id=1, user_id=1001, display_name="Максим"),
+            _guest(id=2, event_id=1, user_id=1001, display_name="Максим"),
+        ]
 
         result = await apply_event_action(
             repository=repository,
@@ -159,7 +153,7 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
 
         response = repository.responses[(1, 1001)]
         self.assertEqual(response.status, ResponseStatus.NOT_GOING)
-        self.assertEqual(response.guests_count, 2)
+        self.assertEqual(len(repository.guests), 2)
         self.assertTrue(result.should_update_message)
 
     async def test_plus_one_creates_response_without_personal_status(self) -> None:
@@ -173,9 +167,8 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
             display_name="Максим",
         )
 
-        response = repository.responses[(1, 1001)]
-        self.assertEqual(response.status, ResponseStatus.NO_ANSWER)
-        self.assertEqual(response.guests_count, 1)
+        self.assertEqual(len(repository.guests), 1)
+        self.assertEqual(repository.guests[0].display_name, "Максим")
         self.assertTrue(result.should_update_message)
         self.assertEqual(result.feedback_text, "Added +1.")
 
@@ -199,7 +192,7 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
 
         response = repository.responses[(1, 1001)]
         self.assertEqual(response.status, ResponseStatus.NOT_GOING)
-        self.assertEqual(response.guests_count, 2)
+        self.assertEqual(len(repository.guests), 1)
         self.assertTrue(result.should_update_message)
 
     async def test_minus_one_without_guests_does_not_update_message(self) -> None:
@@ -218,13 +211,11 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_clear_guests_updates_message_when_guests_exist(self) -> None:
         repository = FakeEventActionRepository()
-        repository.responses[(1, 1001)] = _response(
-            event_id=1,
-            user_id=1001,
-            display_name="Максим",
-            status=ResponseStatus.GOING,
-            guests_count=3,
-        )
+        repository.guests = [
+            _guest(id=1, event_id=1, user_id=1001, display_name="Максим"),
+            _guest(id=2, event_id=1, user_id=1001, display_name="Максим"),
+            _guest(id=3, event_id=1, user_id=1001, display_name="Максим"),
+        ]
 
         result = await apply_event_action(
             repository=repository,
@@ -234,8 +225,7 @@ class EventActionTests(unittest.IsolatedAsyncioTestCase):
             display_name="Максим",
         )
 
-        response = repository.responses[(1, 1001)]
-        self.assertEqual(response.guests_count, 0)
+        self.assertEqual(repository.guests, [])
         self.assertTrue(result.should_update_message)
         self.assertEqual(result.feedback_text, "Removed all guests.")
 
@@ -305,4 +295,20 @@ def _response(
         guests_count=guests_count,
         created_at="2026-08-25T12:00:00+00:00",
         updated_at="2026-08-25T12:00:00+00:00",
+    )
+
+
+def _guest(
+    *,
+    id: int,
+    event_id: int,
+    user_id: int,
+    display_name: str,
+) -> EventGuest:
+    return EventGuest(
+        id=id,
+        event_id=event_id,
+        user_id=user_id,
+        display_name=display_name,
+        created_at="2026-08-25T12:00:00+00:00",
     )

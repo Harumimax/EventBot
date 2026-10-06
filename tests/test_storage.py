@@ -30,6 +30,9 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
             response_count = await connection.execute_fetchall(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'event_responses'"
             )
+            guest_count = await connection.execute_fetchall(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'event_guests'"
+            )
             version_cursor = await connection.execute("PRAGMA user_version;")
             version = (await version_cursor.fetchone())[0]
         finally:
@@ -37,6 +40,7 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(event_count), 1)
         self.assertEqual(len(response_count), 1)
+        self.assertEqual(len(guest_count), 1)
         self.assertEqual(version, CURRENT_SCHEMA_VERSION)
 
     async def test_create_event_sets_expiration_after_ttl_days(self) -> None:
@@ -146,50 +150,64 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated_response.status, ResponseStatus.NOT_GOING)
         self.assertEqual(len(responses), 1)
 
-    async def test_increment_guests_creates_response_without_personal_status(self) -> None:
+    async def test_add_guest_creates_independent_guest_rows(self) -> None:
         event = await self.repository.create_event(
             chat_id=-100,
             created_by_user_id=42,
             description="Футбол",
         )
+        first_time = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
+        second_time = datetime(2026, 8, 25, 12, 10, tzinfo=UTC)
 
-        first_response = await self.repository.increment_guests(
+        first_guest = await self.repository.add_guest(
             event_id=event.id,
             user_id=1001,
             display_name="Максим",
+            now=first_time,
         )
-        second_response = await self.repository.increment_guests(
+        second_guest = await self.repository.add_guest(
             event_id=event.id,
             user_id=1001,
             display_name="Максим",
+            now=second_time,
+        )
+        guests = await self.repository.list_event_guests(event.id)
+
+        self.assertEqual(first_guest.created_at, first_time.isoformat())
+        self.assertEqual(second_guest.created_at, second_time.isoformat())
+        self.assertEqual([guest.id for guest in guests], [first_guest.id, second_guest.id])
+        self.assertIsNone(
+            await self.repository.get_event_response(event_id=event.id, user_id=1001)
         )
 
-        self.assertEqual(first_response.status, ResponseStatus.NO_ANSWER)
-        self.assertEqual(first_response.guests_count, 1)
-        self.assertEqual(second_response.status, ResponseStatus.NO_ANSWER)
-        self.assertEqual(second_response.guests_count, 2)
-
-    async def test_increment_guests_preserves_existing_status(self) -> None:
+    async def test_add_guest_preserves_existing_status_time(self) -> None:
         event = await self.repository.create_event(
             chat_id=-100,
             created_by_user_id=42,
             description="Футбол",
         )
+        status_time = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
+        guest_time = datetime(2026, 8, 25, 12, 10, tzinfo=UTC)
         await self.repository.set_response_status(
             event_id=event.id,
             user_id=1001,
             display_name="Максим",
             status=ResponseStatus.NOT_GOING,
+            now=status_time,
         )
 
-        response = await self.repository.increment_guests(
+        guest = await self.repository.add_guest(
             event_id=event.id,
             user_id=1001,
             display_name="Максим",
+            now=guest_time,
         )
+        response = await self.repository.get_event_response(event_id=event.id, user_id=1001)
 
+        self.assertIsNotNone(response)
         self.assertEqual(response.status, ResponseStatus.NOT_GOING)
-        self.assertEqual(response.guests_count, 1)
+        self.assertEqual(response.updated_at, status_time.isoformat())
+        self.assertEqual(guest.created_at, guest_time.isoformat())
 
     async def test_decrement_guests_does_not_go_below_zero(self) -> None:
         event = await self.repository.create_event(
@@ -197,25 +215,35 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
             created_by_user_id=42,
             description="Футбол",
         )
-        await self.repository.increment_guests(
+        first_guest = await self.repository.add_guest(
             event_id=event.id,
             user_id=1001,
             display_name="Максим",
+            now=datetime(2026, 8, 25, 12, 0, tzinfo=UTC),
+        )
+        second_guest = await self.repository.add_guest(
+            event_id=event.id,
+            user_id=1001,
+            display_name="Максим",
+            now=datetime(2026, 8, 25, 12, 10, tzinfo=UTC),
         )
 
-        first_response = await self.repository.decrement_guests(
+        first_removed_guest = await self.repository.remove_last_guest(
             event_id=event.id,
             user_id=1001,
         )
-        second_response = await self.repository.decrement_guests(
+        second_removed_guest = await self.repository.remove_last_guest(
+            event_id=event.id,
+            user_id=1001,
+        )
+        third_removed_guest = await self.repository.remove_last_guest(
             event_id=event.id,
             user_id=1001,
         )
 
-        self.assertIsNotNone(first_response)
-        self.assertIsNotNone(second_response)
-        self.assertEqual(first_response.guests_count, 0)
-        self.assertEqual(second_response.guests_count, 0)
+        self.assertEqual(first_removed_guest, second_guest)
+        self.assertEqual(second_removed_guest, first_guest)
+        self.assertIsNone(third_removed_guest)
 
     async def test_clear_guests_resets_guest_count(self) -> None:
         event = await self.repository.create_event(
@@ -223,24 +251,25 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
             created_by_user_id=42,
             description="Футбол",
         )
-        await self.repository.increment_guests(
+        await self.repository.add_guest(
             event_id=event.id,
             user_id=1001,
             display_name="Максим",
         )
-        await self.repository.increment_guests(
+        await self.repository.add_guest(
             event_id=event.id,
             user_id=1001,
             display_name="Максим",
         )
 
-        response = await self.repository.clear_guests(
+        removed_count = await self.repository.clear_guests(
             event_id=event.id,
             user_id=1001,
         )
+        guests = await self.repository.list_event_guests(event.id)
 
-        self.assertIsNotNone(response)
-        self.assertEqual(response.guests_count, 0)
+        self.assertEqual(removed_count, 2)
+        self.assertEqual(guests, [])
 
     async def test_non_going_status_preserves_guest_count(self) -> None:
         event = await self.repository.create_event(
@@ -248,7 +277,7 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
             created_by_user_id=42,
             description="Футбол",
         )
-        await self.repository.increment_guests(
+        await self.repository.add_guest(
             event_id=event.id,
             user_id=1001,
             display_name="Максим",
@@ -261,10 +290,12 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
             status=ResponseStatus.NOT_GOING,
         )
 
-        self.assertEqual(response.status, ResponseStatus.NOT_GOING)
-        self.assertEqual(response.guests_count, 1)
+        guests = await self.repository.list_event_guests(event.id)
 
-    async def test_migrates_v2_database_to_v3_status_constraint(self) -> None:
+        self.assertEqual(response.status, ResponseStatus.NOT_GOING)
+        self.assertEqual(len(guests), 1)
+
+    async def test_migrates_v2_database_to_v4_guest_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "v2.sqlite"
             connection = await aiosqlite.connect(database_path)
@@ -345,12 +376,14 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
             database = create_database(database_path)
             await database.initialize()
             repository = EventRepository(database)
-            response = await repository.increment_guests(
+            guest = await repository.add_guest(
                 event_id=1,
                 user_id=2002,
                 display_name="Максим",
+                now=datetime(2026, 8, 25, 12, 20, tzinfo=UTC),
             )
             responses = await repository.list_event_responses(1)
+            guests = await repository.list_event_guests(1)
 
             migrated_connection = await database.connect()
             try:
@@ -360,11 +393,14 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
                 await migrated_connection.close()
 
         self.assertEqual(version, CURRENT_SCHEMA_VERSION)
-        self.assertEqual(response.status, ResponseStatus.NO_ANSWER)
-        self.assertEqual(response.guests_count, 1)
-        self.assertEqual(len(responses), 2)
+        self.assertEqual(guest.display_name, "Максим")
+        self.assertEqual(len(responses), 1)
         self.assertEqual(responses[0].status, ResponseStatus.NOT_GOING)
-        self.assertEqual(responses[0].guests_count, 2)
+        self.assertEqual(len(guests), 3)
+        self.assertEqual([guest.user_id for guest in guests], [1001, 1001, 2002])
+        self.assertEqual(guests[0].created_at, "2026-08-25T12:05:00+00:00")
+        self.assertEqual(guests[1].created_at, "2026-08-25T12:05:00+00:00")
+        self.assertEqual(guests[2].created_at, "2026-08-25T12:20:00+00:00")
 
     async def test_list_expired_events_returns_only_expired_events(self) -> None:
         now = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
@@ -403,6 +439,7 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(was_deleted)
         self.assertIsNone(await self.repository.get_event(event.id))
         self.assertEqual(await self.repository.list_event_responses(event.id), [])
+        self.assertEqual(await self.repository.list_event_guests(event.id), [])
 
     async def test_initialize_migrates_v1_participants_to_v2_responses(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

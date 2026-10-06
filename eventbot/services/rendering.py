@@ -7,7 +7,7 @@ from html import escape
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from eventbot.storage.repositories import Event, EventResponse, ResponseStatus
+from eventbot.storage.repositories import Event, EventGuest, EventResponse, ResponseStatus
 
 
 CALLBACK_PREFIX = "event"
@@ -153,11 +153,16 @@ def build_event_keyboard(event_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def format_event_message(event: Event, responses: list[EventResponse]) -> str:
+def format_event_message(
+    event: Event,
+    responses: list[EventResponse],
+    guests: list[EventGuest] | None = None,
+) -> str:
+    event_guests = guests or []
     going = _responses_by_status(responses, ResponseStatus.GOING)
     not_going = _responses_by_status(responses, ResponseStatus.NOT_GOING)
     maybe = _responses_by_status(responses, ResponseStatus.MAYBE)
-    stats = build_event_message_stats(responses)
+    stats = build_event_message_stats(responses, event_guests)
 
     lines = [
         f"👉 {escape(event.description)} 👈",
@@ -169,9 +174,8 @@ def format_event_message(event: Event, responses: list[EventResponse]) -> str:
     lines.append("Going😀:")
     lines.extend(f"✅ {format_response_line(response)}" for response in going)
     lines.extend(
-        f"➕{guest_number}, from: {format_response_line(response)}"
-        for response in responses
-        for guest_number in range(1, response.guests_count + 1)
+        format_guest_line(guest, guest_number)
+        for guest, guest_number in _numbered_guests(event_guests)
     )
 
     lines.extend(["", "Not going😐:"])
@@ -194,20 +198,31 @@ def format_event_message(event: Event, responses: list[EventResponse]) -> str:
     return "\n".join(lines)
 
 
-def format_expired_event_message(event: Event, responses: list[EventResponse]) -> str:
-    message = format_event_message(event, responses)
+def format_expired_event_message(
+    event: Event,
+    responses: list[EventResponse],
+    guests: list[EventGuest] | None = None,
+) -> str:
+    message = format_event_message(event, responses, guests)
     if message.endswith(EXPIRED_EVENT_SUFFIX):
         return message
 
     return f"{message}\n\n{EXPIRED_EVENT_SUFFIX}"
 
 
-def format_user_link(response: EventResponse) -> str:
+def format_user_link(response: EventResponse | EventGuest) -> str:
     return f'<a href="tg://user?id={response.user_id}">{escape(response.display_name)}</a>'
 
 
 def format_response_line(response: EventResponse) -> str:
     return f"{format_user_link(response)} - {format_response_time(response.updated_at)}"
+
+
+def format_guest_line(guest: EventGuest, guest_number: int) -> str:
+    return (
+        f"➕{guest_number}, from: "
+        f"{format_user_link(guest)} - {format_response_time(guest.created_at)}"
+    )
 
 
 def format_response_time(timestamp: str) -> str:
@@ -220,10 +235,14 @@ def format_response_time(timestamp: str) -> str:
     return f"{local_value.day} {month_name} {local_value:%H:%M}"
 
 
-def build_event_message_stats(responses: list[EventResponse]) -> EventMessageStats:
+def build_event_message_stats(
+    responses: list[EventResponse],
+    guests: list[EventGuest] | None = None,
+) -> EventMessageStats:
+    event_guests = guests or []
     return EventMessageStats(
         going_count=sum(1 for response in responses if response.status == ResponseStatus.GOING),
-        guests_count=sum(response.guests_count for response in responses),
+        guests_count=len(event_guests),
         not_going_count=sum(
             1 for response in responses if response.status == ResponseStatus.NOT_GOING
         ),
@@ -236,3 +255,14 @@ def _responses_by_status(
     status: ResponseStatus,
 ) -> list[EventResponse]:
     return [response for response in responses if response.status == status]
+
+
+def _numbered_guests(guests: list[EventGuest]) -> list[tuple[EventGuest, int]]:
+    guest_numbers_by_user: dict[int, int] = {}
+    numbered_guests = []
+    for guest in guests:
+        guest_number = guest_numbers_by_user.get(guest.user_id, 0) + 1
+        guest_numbers_by_user[guest.user_id] = guest_number
+        numbered_guests.append((guest, guest_number))
+
+    return numbered_guests

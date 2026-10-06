@@ -5,9 +5,9 @@ from pathlib import Path
 import aiosqlite
 
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
-SCHEMA_V3 = """
+SCHEMA_V4 = """
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS events (
@@ -41,6 +41,20 @@ CREATE INDEX IF NOT EXISTS idx_event_responses_event_id
     ON event_responses(event_id);
 CREATE INDEX IF NOT EXISTS idx_event_responses_event_status
     ON event_responses(event_id, status);
+
+CREATE TABLE IF NOT EXISTS event_guests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    display_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_guests_event_id
+    ON event_guests(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_guests_event_user
+    ON event_guests(event_id, user_id, created_at, id);
 """
 
 MIGRATE_V1_TO_V2 = """
@@ -131,6 +145,61 @@ CREATE INDEX IF NOT EXISTS idx_event_responses_event_status
 PRAGMA user_version = 3;
 """
 
+MIGRATE_V3_TO_V4 = """
+CREATE TABLE IF NOT EXISTS event_guests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    display_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);
+
+WITH RECURSIVE guest_numbers AS (
+    SELECT
+        event_id,
+        user_id,
+        display_name,
+        updated_at AS created_at,
+        1 AS guest_number,
+        guests_count AS max_guests
+    FROM event_responses
+    WHERE guests_count > 0
+
+    UNION ALL
+
+    SELECT
+        event_id,
+        user_id,
+        display_name,
+        created_at,
+        guest_number + 1,
+        max_guests
+    FROM guest_numbers
+    WHERE guest_number < max_guests
+)
+INSERT INTO event_guests (
+    event_id,
+    user_id,
+    display_name,
+    created_at
+)
+SELECT
+    event_id,
+    user_id,
+    display_name,
+    created_at
+FROM guest_numbers
+ORDER BY event_id, user_id, guest_number;
+
+CREATE INDEX IF NOT EXISTS idx_event_guests_event_id
+    ON event_guests(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_guests_event_user
+    ON event_guests(event_id, user_id, created_at, id);
+
+PRAGMA user_version = 4;
+"""
+
 
 class Database:
     def __init__(self, path: Path) -> None:
@@ -149,15 +218,19 @@ class Database:
             version = await _get_user_version(connection)
 
             if version == 0:
-                await connection.executescript(SCHEMA_V3)
+                await connection.executescript(SCHEMA_V4)
                 await _set_user_version(connection, CURRENT_SCHEMA_VERSION)
             elif version == 1:
                 await connection.executescript(MIGRATE_V1_TO_V2)
                 await connection.executescript(MIGRATE_V2_TO_V3)
+                await connection.executescript(MIGRATE_V3_TO_V4)
             elif version == 2:
                 await connection.executescript(MIGRATE_V2_TO_V3)
+                await connection.executescript(MIGRATE_V3_TO_V4)
+            elif version == 3:
+                await connection.executescript(MIGRATE_V3_TO_V4)
             elif version == CURRENT_SCHEMA_VERSION:
-                await connection.executescript(SCHEMA_V3)
+                await connection.executescript(SCHEMA_V4)
             else:
                 raise RuntimeError(f"Unsupported database schema version: {version}")
 

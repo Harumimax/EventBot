@@ -13,7 +13,7 @@ from eventbot.services.rendering import (
     parse_event_callback_data,
     parse_join_callback_data,
 )
-from eventbot.storage.repositories import Event, EventResponse, ResponseStatus
+from eventbot.storage.repositories import Event, EventGuest, EventResponse, ResponseStatus
 
 
 class RenderingTests(unittest.TestCase):
@@ -139,7 +139,7 @@ class RenderingTests(unittest.TestCase):
                 user_id=10,
                 display_name="Арена Альфа",
                 status=ResponseStatus.GOING,
-                guests_count=1,
+                guests_count=0,
             ),
             _response(
                 user_id=20,
@@ -151,23 +151,31 @@ class RenderingTests(unittest.TestCase):
                 user_id=30,
                 display_name="Alb",
                 status=ResponseStatus.NOT_GOING,
-                guests_count=2,
+                guests_count=0,
             ),
             _response(
                 user_id=40,
                 display_name="Максим",
                 status=ResponseStatus.MAYBE,
-                guests_count=1,
+                guests_count=0,
             ),
             _response(
                 user_id=50,
                 display_name="Олег",
                 status=ResponseStatus.NO_ANSWER,
-                guests_count=1,
+                guests_count=0,
             ),
         ]
 
-        message = format_event_message(event, responses)
+        guests = [
+            _guest(1, 10, "Арена Альфа", created_at="2026-08-25T12:00:00+00:00"),
+            _guest(2, 30, "Alb", created_at="2026-08-25T12:10:00+00:00"),
+            _guest(3, 30, "Alb", created_at="2026-08-25T12:20:00+00:00"),
+            _guest(4, 40, "Максим", created_at="2026-08-25T12:30:00+00:00"),
+            _guest(5, 50, "Олег", created_at="2026-08-25T12:40:00+00:00"),
+        ]
+
+        message = format_event_message(event, responses, guests)
 
         self.assertEqual(
             message,
@@ -177,10 +185,10 @@ class RenderingTests(unittest.TestCase):
             '✅ <a href="tg://user?id=10">Арена Альфа</a> - 25 августа 15:00\n'
             '✅ <a href="tg://user?id=20">Aleksandr Tenkalyuk</a> - 25 августа 15:00\n'
             '➕1, from: <a href="tg://user?id=10">Арена Альфа</a> - 25 августа 15:00\n'
-            '➕1, from: <a href="tg://user?id=30">Alb</a> - 25 августа 15:00\n'
-            '➕2, from: <a href="tg://user?id=30">Alb</a> - 25 августа 15:00\n'
-            '➕1, from: <a href="tg://user?id=40">Максим</a> - 25 августа 15:00\n'
-            '➕1, from: <a href="tg://user?id=50">Олег</a> - 25 августа 15:00\n'
+            '➕1, from: <a href="tg://user?id=30">Alb</a> - 25 августа 15:10\n'
+            '➕2, from: <a href="tg://user?id=30">Alb</a> - 25 августа 15:20\n'
+            '➕1, from: <a href="tg://user?id=40">Максим</a> - 25 августа 15:30\n'
+            '➕1, from: <a href="tg://user?id=50">Олег</a> - 25 августа 15:40\n'
             "\n"
             "Not going😐:\n"
             '❌ <a href="tg://user?id=30">Alb</a> - 25 августа 15:00\n'
@@ -202,15 +210,20 @@ class RenderingTests(unittest.TestCase):
                 user_id=10,
                 display_name="Анна",
                 status=ResponseStatus.GOING,
-                guests_count=3,
+                guests_count=0,
             )
         ]
+        guests = [
+            _guest(1, 10, "Анна", created_at="2026-08-25T12:00:00+00:00"),
+            _guest(2, 10, "Анна", created_at="2026-08-25T12:10:00+00:00"),
+            _guest(3, 10, "Анна", created_at="2026-08-25T12:20:00+00:00"),
+        ]
 
-        message = format_event_message(event, responses)
+        message = format_event_message(event, responses, guests)
 
         self.assertIn('➕1, from: <a href="tg://user?id=10">Анна</a> - 25 августа 15:00', message)
-        self.assertIn('➕2, from: <a href="tg://user?id=10">Анна</a> - 25 августа 15:00', message)
-        self.assertIn('➕3, from: <a href="tg://user?id=10">Анна</a> - 25 августа 15:00', message)
+        self.assertIn('➕2, from: <a href="tg://user?id=10">Анна</a> - 25 августа 15:10', message)
+        self.assertIn('➕3, from: <a href="tg://user?id=10">Анна</a> - 25 августа 15:20', message)
         self.assertIn("Total going: 4", message)
 
     def test_format_user_link_uses_telegram_user_id(self) -> None:
@@ -240,11 +253,19 @@ class RenderingTests(unittest.TestCase):
             _response(40, "No answer", ResponseStatus.NO_ANSWER, guests_count=3),
         ]
 
-        stats = build_event_message_stats(responses)
+        guests = [
+            _guest(1, 10, "Going"),
+            _guest(2, 10, "Going"),
+            _guest(3, 20, "No"),
+            _guest(4, 30, "Maybe"),
+            _guest(5, 40, "No answer"),
+        ]
+
+        stats = build_event_message_stats(responses, guests)
 
         self.assertEqual(stats.going_count, 1)
-        self.assertEqual(stats.guests_count, 14)
-        self.assertEqual(stats.total_going, 15)
+        self.assertEqual(stats.guests_count, 5)
+        self.assertEqual(stats.total_going, 6)
         self.assertEqual(stats.not_going_count, 1)
         self.assertEqual(stats.maybe_count, 1)
 
@@ -277,4 +298,19 @@ def _response(
         guests_count=guests_count,
         created_at="2026-08-25T12:00:00+00:00",
         updated_at="2026-08-25T12:00:00+00:00",
+    )
+
+
+def _guest(
+    id: int,
+    user_id: int,
+    display_name: str,
+    created_at: str = "2026-08-25T12:00:00+00:00",
+) -> EventGuest:
+    return EventGuest(
+        id=id,
+        event_id=1,
+        user_id=user_id,
+        display_name=display_name,
+        created_at=created_at,
     )

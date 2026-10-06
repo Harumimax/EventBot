@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from aiogram.enums import ParseMode
 
 from eventbot.services.cleanup import run_cleanup_loop, run_cleanup_once
-from eventbot.storage.repositories import Event, EventResponse, ResponseStatus
+from eventbot.storage.repositories import Event, EventGuest, EventResponse, ResponseStatus
 
 
 class FakeEventRepository:
@@ -15,11 +15,14 @@ class FakeEventRepository:
         *,
         expired_events: list[Event] | None = None,
         responses: list[EventResponse] | None = None,
+        guests: list[EventGuest] | None = None,
     ) -> None:
         self.expired_events = expired_events or []
         self.responses = responses or []
+        self.guests = guests or []
         self.list_expired_calls: list[datetime] = []
         self.response_event_ids: list[int] = []
+        self.guest_event_ids: list[int] = []
         self.deleted_event_ids: list[int] = []
 
     async def list_expired_events(self, now: datetime | None = None) -> list[Event]:
@@ -32,6 +35,10 @@ class FakeEventRepository:
     async def list_event_responses(self, event_id: int) -> list[EventResponse]:
         self.response_event_ids.append(event_id)
         return [response for response in self.responses if response.event_id == event_id]
+
+    async def list_event_guests(self, event_id: int) -> list[EventGuest]:
+        self.guest_event_ids.append(event_id)
+        return [guest for guest in self.guests if guest.event_id == event_id]
 
     async def delete_event(self, event_id: int) -> bool:
         self.deleted_event_ids.append(event_id)
@@ -90,6 +97,7 @@ class CleanupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(deleted_count, 1)
         self.assertEqual(repository.list_expired_calls, [now])
         self.assertEqual(repository.response_event_ids, [1])
+        self.assertEqual(repository.guest_event_ids, [1])
         self.assertEqual(repository.deleted_event_ids, [1])
         self.assertEqual(len(bot.edits), 1)
         self.assertEqual(bot.edits[0]["chat_id"], -100)
@@ -167,4 +175,19 @@ def _response(
         guests_count=guests_count,
         created_at="2026-08-25T12:00:00+00:00",
         updated_at="2026-08-25T12:00:00+00:00",
+    )
+
+
+def _guest(
+    *,
+    event_id: int,
+    user_id: int,
+    display_name: str,
+) -> EventGuest:
+    return EventGuest(
+        id=user_id,
+        event_id=event_id,
+        user_id=user_id,
+        display_name=display_name,
+        created_at="2026-08-25T12:00:00+00:00",
     )

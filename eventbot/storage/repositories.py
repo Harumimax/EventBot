@@ -44,6 +44,15 @@ class EventResponse:
 
 
 @dataclass(frozen=True)
+class EventGuest:
+    id: int
+    event_id: int
+    user_id: int
+    display_name: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class Participant:
     id: int
     event_id: int
@@ -256,6 +265,172 @@ class EventRepository:
 
         return [_event_response_from_row(row) for row in rows]
 
+    async def add_guest(
+        self,
+        *,
+        event_id: int,
+        user_id: int,
+        display_name: str,
+        now: datetime | None = None,
+    ) -> EventGuest:
+        current_timestamp = _format_timestamp(now or datetime.now(UTC))
+
+        connection = await self.database.connect()
+        try:
+            cursor = await connection.execute(
+                """
+                INSERT INTO event_guests (
+                    event_id,
+                    user_id,
+                    display_name,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?)
+                """,
+                (event_id, user_id, display_name, current_timestamp),
+            )
+            await connection.execute(
+                """
+                UPDATE event_responses
+                SET
+                    display_name = ?,
+                    guests_count = guests_count + 1
+                WHERE event_id = ? AND user_id = ?
+                """,
+                (display_name, event_id, user_id),
+            )
+            await connection.commit()
+
+            guest_id = cursor.lastrowid
+            if guest_id is None:
+                raise RuntimeError("Failed to add guest")
+        finally:
+            await connection.close()
+
+        guest = await self.get_event_guest(guest_id)
+        if guest is None:
+            raise RuntimeError("Event guest was not found")
+
+        return guest
+
+    async def get_event_guest(self, guest_id: int) -> EventGuest | None:
+        connection = await self.database.connect()
+        try:
+            row = await _fetch_one(
+                connection,
+                "SELECT * FROM event_guests WHERE id = ?",
+                (guest_id,),
+            )
+        finally:
+            await connection.close()
+
+        return _event_guest_from_row(row) if row else None
+
+    async def list_event_guests(self, event_id: int) -> list[EventGuest]:
+        connection = await self.database.connect()
+        try:
+            cursor = await connection.execute(
+                """
+                SELECT *
+                FROM event_guests
+                WHERE event_id = ?
+                ORDER BY created_at ASC, id ASC
+                """,
+                (event_id,),
+            )
+            rows = await cursor.fetchall()
+        finally:
+            await connection.close()
+
+        return [_event_guest_from_row(row) for row in rows]
+
+    async def count_user_guests(self, *, event_id: int, user_id: int) -> int:
+        connection = await self.database.connect()
+        try:
+            row = await _fetch_one(
+                connection,
+                """
+                SELECT COUNT(*) AS guests_count
+                FROM event_guests
+                WHERE event_id = ? AND user_id = ?
+                """,
+                (event_id, user_id),
+            )
+        finally:
+            await connection.close()
+
+        return int(row["guests_count"]) if row else 0
+
+    async def remove_last_guest(
+        self,
+        *,
+        event_id: int,
+        user_id: int,
+    ) -> EventGuest | None:
+        connection = await self.database.connect()
+        try:
+            row = await _fetch_one(
+                connection,
+                """
+                SELECT *
+                FROM event_guests
+                WHERE event_id = ? AND user_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (event_id, user_id),
+            )
+            if row is None:
+                return None
+
+            guest = _event_guest_from_row(row)
+            await connection.execute(
+                "DELETE FROM event_guests WHERE id = ?",
+                (guest.id,),
+            )
+            await connection.execute(
+                """
+                UPDATE event_responses
+                SET guests_count = MAX(guests_count - 1, 0)
+                WHERE event_id = ? AND user_id = ?
+                """,
+                (event_id, user_id),
+            )
+            await connection.commit()
+        finally:
+            await connection.close()
+
+        return guest
+
+    async def clear_guests(
+        self,
+        *,
+        event_id: int,
+        user_id: int,
+    ) -> int:
+        connection = await self.database.connect()
+        try:
+            cursor = await connection.execute(
+                """
+                DELETE FROM event_guests
+                WHERE event_id = ? AND user_id = ?
+                """,
+                (event_id, user_id),
+            )
+            await connection.execute(
+                """
+                UPDATE event_responses
+                SET guests_count = 0
+                WHERE event_id = ? AND user_id = ?
+                """,
+                (event_id, user_id),
+            )
+            await connection.commit()
+
+            return cursor.rowcount
+        finally:
+            await connection.close()
+
     async def increment_guests(
         self,
         *,
@@ -263,45 +438,13 @@ class EventRepository:
         user_id: int,
         display_name: str,
         now: datetime | None = None,
-    ) -> EventResponse:
-        current_timestamp = _format_timestamp(now or datetime.now(UTC))
-
-        connection = await self.database.connect()
-        try:
-            await connection.execute(
-                """
-                INSERT INTO event_responses (
-                    event_id,
-                    user_id,
-                    display_name,
-                    status,
-                    guests_count,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?, ?, ?, 'no_answer', 1, ?, ?)
-                ON CONFLICT(event_id, user_id) DO UPDATE SET
-                    display_name = excluded.display_name,
-                    guests_count = event_responses.guests_count + 1,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    event_id,
-                    user_id,
-                    display_name,
-                    current_timestamp,
-                    current_timestamp,
-                ),
-            )
-            await connection.commit()
-        finally:
-            await connection.close()
-
-        response = await self.get_event_response(event_id=event_id, user_id=user_id)
-        if response is None:
-            raise RuntimeError("Event response was not found")
-
-        return response
+    ) -> EventGuest:
+        return await self.add_guest(
+            event_id=event_id,
+            user_id=user_id,
+            display_name=display_name,
+            now=now,
+        )
 
     async def decrement_guests(
         self,
@@ -309,53 +452,8 @@ class EventRepository:
         event_id: int,
         user_id: int,
         now: datetime | None = None,
-    ) -> EventResponse | None:
-        current_timestamp = _format_timestamp(now or datetime.now(UTC))
-
-        connection = await self.database.connect()
-        try:
-            await connection.execute(
-                """
-                UPDATE event_responses
-                SET
-                    guests_count = MAX(guests_count - 1, 0),
-                    updated_at = ?
-                WHERE event_id = ? AND user_id = ?
-                """,
-                (current_timestamp, event_id, user_id),
-            )
-            await connection.commit()
-        finally:
-            await connection.close()
-
-        return await self.get_event_response(event_id=event_id, user_id=user_id)
-
-    async def clear_guests(
-        self,
-        *,
-        event_id: int,
-        user_id: int,
-        now: datetime | None = None,
-    ) -> EventResponse | None:
-        current_timestamp = _format_timestamp(now or datetime.now(UTC))
-
-        connection = await self.database.connect()
-        try:
-            await connection.execute(
-                """
-                UPDATE event_responses
-                SET
-                    guests_count = 0,
-                    updated_at = ?
-                WHERE event_id = ? AND user_id = ?
-                """,
-                (current_timestamp, event_id, user_id),
-            )
-            await connection.commit()
-        finally:
-            await connection.close()
-
-        return await self.get_event_response(event_id=event_id, user_id=user_id)
+    ) -> EventGuest | None:
+        return await self.remove_last_guest(event_id=event_id, user_id=user_id)
 
     async def add_participant(
         self,
@@ -444,6 +542,16 @@ def _event_response_from_row(row: aiosqlite.Row) -> EventResponse:
         guests_count=row["guests_count"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _event_guest_from_row(row: aiosqlite.Row) -> EventGuest:
+    return EventGuest(
+        id=row["id"],
+        event_id=row["event_id"],
+        user_id=row["user_id"],
+        display_name=row["display_name"],
+        created_at=row["created_at"],
     )
 
 

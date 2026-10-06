@@ -46,11 +46,12 @@ async def run_cleanup_once(
     for event in expired_events:
         if bot is not None and event.message_id is not None:
             responses = await event_repository.list_event_responses(event.id)
+            guests = await event_repository.list_event_guests(event.id)
             await _finalize_event_message(
                 bot=bot,
                 chat_id=event.chat_id,
                 message_id=event.message_id,
-                text=format_expired_event_message(event, responses),
+                text=format_expired_event_message(event, responses, guests),
             )
 
         if await event_repository.delete_event(event.id):

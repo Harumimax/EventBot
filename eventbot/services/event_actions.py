@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from eventbot.services.rendering import EventAction
-from eventbot.storage.repositories import Event, EventResponse, ResponseStatus
+from eventbot.storage.repositories import Event, EventGuest, EventResponse, ResponseStatus
 
 
 class EventActionRepository(Protocol):
@@ -29,21 +29,21 @@ class EventActionRepository(Protocol):
     ) -> EventResponse:
         pass
 
-    async def increment_guests(
+    async def add_guest(
         self,
         *,
         event_id: int,
         user_id: int,
         display_name: str,
-    ) -> EventResponse:
+    ) -> EventGuest:
         pass
 
-    async def decrement_guests(
+    async def remove_last_guest(
         self,
         *,
         event_id: int,
         user_id: int,
-    ) -> EventResponse | None:
+    ) -> EventGuest | None:
         pass
 
     async def clear_guests(
@@ -51,7 +51,7 @@ class EventActionRepository(Protocol):
         *,
         event_id: int,
         user_id: int,
-    ) -> EventResponse | None:
+    ) -> int:
         pass
 
 
@@ -112,7 +112,7 @@ async def apply_event_action(
         )
 
     if action == EventAction.PLUS_ONE:
-        await repository.increment_guests(
+        await repository.add_guest(
             event_id=event.id,
             user_id=user_id,
             display_name=display_name,
@@ -124,18 +124,17 @@ async def apply_event_action(
         )
 
     if action == EventAction.MINUS_ONE:
-        existing = await repository.get_event_response(
+        removed_guest = await repository.remove_last_guest(
             event_id=event.id,
             user_id=user_id,
         )
-        if existing is None or existing.guests_count == 0:
+        if removed_guest is None:
             return EventActionResult(
                 event=event,
                 feedback_text="No +1 to remove.",
                 should_update_message=False,
             )
 
-        await repository.decrement_guests(event_id=event.id, user_id=user_id)
         return EventActionResult(
             event=event,
             feedback_text="Removed 1 guest.",
@@ -143,18 +142,14 @@ async def apply_event_action(
         )
 
     if action == EventAction.CLEAR_GUESTS:
-        existing = await repository.get_event_response(
-            event_id=event.id,
-            user_id=user_id,
-        )
-        if existing is None or existing.guests_count == 0:
+        removed_count = await repository.clear_guests(event_id=event.id, user_id=user_id)
+        if removed_count == 0:
             return EventActionResult(
                 event=event,
                 feedback_text="No guests to remove.",
                 should_update_message=False,
             )
 
-        await repository.clear_guests(event_id=event.id, user_id=user_id)
         return EventActionResult(
             event=event,
             feedback_text="Removed all guests.",

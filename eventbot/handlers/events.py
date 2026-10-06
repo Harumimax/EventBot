@@ -50,8 +50,9 @@ async def new_event(
         description=description,
     )
     responses = await event_repository.list_event_responses(event.id)
+    guests = await event_repository.list_event_guests(event.id)
     sent_message = await message.answer(
-        format_event_message(event, responses),
+        format_event_message(event, responses, guests),
         reply_markup=build_event_keyboard(event.id),
         parse_mode=ParseMode.HTML,
     )
@@ -105,6 +106,7 @@ async def handle_event_action(
         return
 
     responses = await event_repository.list_event_responses(event.id)
+    guests = await event_repository.list_event_guests(event.id)
     reply_markup = (
         None
         if result.remove_keyboard or parsed_callback.action == EventAction.CLOSE
@@ -113,7 +115,7 @@ async def handle_event_action(
 
     try:
         await callback.message.edit_text(
-            format_event_message(result.event, responses),
+            format_event_message(result.event, responses, guests),
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML,
         )
