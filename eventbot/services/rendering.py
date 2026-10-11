@@ -16,20 +16,6 @@ CALLBACK_PREFIX = "event"
 EXPIRED_EVENT_SUFFIX = "событие закрыто"
 USERNAME_SUFFIX_PATTERN = re.compile(r"\s+\(@[^)]+\)$")
 MOSCOW_TIMEZONE = timezone(timedelta(hours=3), "Europe/Moscow")
-MONTH_NAMES_RU = {
-    1: "января",
-    2: "февраля",
-    3: "марта",
-    4: "апреля",
-    5: "мая",
-    6: "июня",
-    7: "июля",
-    8: "августа",
-    9: "сентября",
-    10: "октября",
-    11: "ноября",
-    12: "декабря",
-}
 
 
 class EventAction(StrEnum):
@@ -239,8 +225,7 @@ def format_response_time(timestamp: str) -> str:
         value = value.replace(tzinfo=MOSCOW_TIMEZONE)
 
     local_value = value.astimezone(MOSCOW_TIMEZONE)
-    month_name = MONTH_NAMES_RU[local_value.month]
-    return f"{local_value.day} {month_name} {local_value:%H:%M}"
+    return f"{local_value:%d.%m %H:%M}"
 
 
 def build_event_message_stats(

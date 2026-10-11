@@ -120,7 +120,7 @@ class RenderingTests(unittest.TestCase):
 
         self.assertIn("👉 Rock &amp; Roll &lt;test&gt; 👈", message)
         self.assertIn(
-            '✅ <a href="tg://user?id=10">A&amp;B &lt;Max&gt;</a> - 25 августа 15:00',
+            '✅ <a href="tg://user?id=10">A&amp;B &lt;Max&gt;</a> - 25.08 15:00',
             message,
         )
 
@@ -182,19 +182,19 @@ class RenderingTests(unittest.TestCase):
             "👉 Потренить в понедельник в 20:00 👈\n"
             "\n"
             "Going😀:\n"
-            '✅ <a href="tg://user?id=10">Арена Альфа</a> - 25 августа 15:00\n'
-            '✅ <a href="tg://user?id=20">Aleksandr Tenkalyuk</a> - 25 августа 15:00\n'
-            '➕1, from: <a href="tg://user?id=10">Арена Альфа</a> - 25 августа 15:00\n'
-            '➕1, from: <a href="tg://user?id=30">Alb</a> - 25 августа 15:10\n'
-            '➕2, from: <a href="tg://user?id=30">Alb</a> - 25 августа 15:20\n'
-            '➕1, from: <a href="tg://user?id=40">Максим</a> - 25 августа 15:30\n'
-            '➕1, from: <a href="tg://user?id=50">Олег</a> - 25 августа 15:40\n'
+            '✅ <a href="tg://user?id=10">Арена Альфа</a> - 25.08 15:00\n'
+            '✅ <a href="tg://user?id=20">Aleksandr Tenkalyuk</a> - 25.08 15:00\n'
+            '➕1, from: <a href="tg://user?id=10">Арена Альфа</a> - 25.08 15:00\n'
+            '➕1, from: <a href="tg://user?id=30">Alb</a> - 25.08 15:10\n'
+            '➕2, from: <a href="tg://user?id=30">Alb</a> - 25.08 15:20\n'
+            '➕1, from: <a href="tg://user?id=40">Максим</a> - 25.08 15:30\n'
+            '➕1, from: <a href="tg://user?id=50">Олег</a> - 25.08 15:40\n'
             "\n"
             "Not going😐:\n"
-            '❌ <a href="tg://user?id=30">Alb</a> - 25 августа 15:00\n'
+            '❌ <a href="tg://user?id=30">Alb</a> - 25.08 15:00\n'
             "\n"
             "Not sure🤔:\n"
-            '💭 <a href="tg://user?id=40">Максим</a> - 25 августа 15:00\n'
+            '💭 <a href="tg://user?id=40">Максим</a> - 25.08 15:00\n'
             "\n"
             "Total going: 7\n"
             "✅: 2\n"
@@ -221,9 +221,9 @@ class RenderingTests(unittest.TestCase):
 
         message = format_event_message(event, responses, guests)
 
-        self.assertIn('➕1, from: <a href="tg://user?id=10">Анна</a> - 25 августа 15:00', message)
-        self.assertIn('➕2, from: <a href="tg://user?id=10">Анна</a> - 25 августа 15:10', message)
-        self.assertIn('➕3, from: <a href="tg://user?id=10">Анна</a> - 25 августа 15:20', message)
+        self.assertIn('➕1, from: <a href="tg://user?id=10">Анна</a> - 25.08 15:00', message)
+        self.assertIn('➕2, from: <a href="tg://user?id=10">Анна</a> - 25.08 15:10', message)
+        self.assertIn('➕3, from: <a href="tg://user?id=10">Анна</a> - 25.08 15:20', message)
         self.assertIn("Total going: 4", message)
 
     def test_format_user_link_uses_telegram_user_id(self) -> None:
@@ -252,10 +252,10 @@ class RenderingTests(unittest.TestCase):
             '<a href="tg://user?id=12345">Латухин Максим</a>',
         )
 
-    def test_format_response_time_uses_moscow_timezone_and_russian_month(self) -> None:
+    def test_format_response_time_uses_moscow_timezone_and_short_date(self) -> None:
         self.assertEqual(
             format_response_time("2026-10-10T09:10:00+00:00"),
-            "10 октября 12:10",
+            "10.10 12:10",
         )
 
     def test_build_event_message_stats_counts_all_guests(self) -> None:
